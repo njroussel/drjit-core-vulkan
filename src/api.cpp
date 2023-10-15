@@ -77,6 +77,10 @@ int jit_has_backend(JitBackend backend) {
                 && !state.devices.empty();
             break;
 
+        case JitBackend::Vulkan:
+            result = (state.backends & (uint32_t) JitBackend::Vulkan);
+            break;
+
         default:
             jitc_raise("jit_has_backend(): invalid input!");
     }

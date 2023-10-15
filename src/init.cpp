@@ -127,7 +127,11 @@ void jitc_init(uint32_t backends) {
     if ((backends & (uint32_t) JitBackend::CUDA) && jitc_cuda_init())
         state.backends |= (uint32_t) JitBackend::CUDA;
 
+    if ((backends & (uint32_t) JitBackend::Vulkan) && jitc_vulkan_init())
+        state.backends |= (uint32_t) JitBackend::Vulkan;
+
     state.variable_counter = 0;
+
     state.kernel_hard_misses = state.kernel_soft_misses = 0;
     state.kernel_hits = state.kernel_launches = 0;
     jitc_nvtx_init();
@@ -320,6 +324,7 @@ void jitc_shutdown(int light) {
 #if defined(DRJIT_ENABLE_OPTIX)
         jitc_optix_api_shutdown();
 #endif
+        jitc_vulkan_shutdown();
     }
 
     free(jitc_temp_path);

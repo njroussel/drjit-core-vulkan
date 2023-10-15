@@ -148,6 +148,9 @@ add_library(
   src/llvm_array.h
   src/llvm_array.cpp
 
+  # Vulkan backend
+  src/vulkan_core.cpp
+
   src/io.h       src/io.cpp
   src/eval.h     src/eval.cpp
   src/call.h     src/call.cpp

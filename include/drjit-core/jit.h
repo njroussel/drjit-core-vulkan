@@ -55,13 +55,17 @@ enum class JitBackend : uint32_t {
     CUDA = (1 << 0),
 
     /// LLVM backend targeting the CPU (generates LLVM IR)
-    LLVM = (1 << 1)
+    LLVM = (1 << 1),
+
+    /// Vulkan backend targeting the GPU
+    Vulkan = (1 << 2)
 };
 #else
 enum JitBackend {
     JitBackendNone = 0,
     JitBackendCUDA = (1 << 0),
-    JitBackendLLVM = (1 << 1)
+    JitBackendLLVM = (1 << 1),
+    JitBackendVulkan = (1 << 2)
 };
 #endif
 
@@ -79,7 +83,8 @@ enum JitBackend {
  */
 extern JIT_EXPORT void
 jit_init(uint32_t backends JIT_DEF((uint32_t) JitBackend::CUDA |
-                                   (uint32_t) JitBackend::LLVM));
+                                   (uint32_t) JitBackend::LLVM) |
+                                   (uint32_t) JitBackend::Vulkan);
 
 /**
  * \brief Launch an asynchronous thread that will execute jit_init() and
@@ -100,7 +105,8 @@ jit_init(uint32_t backends JIT_DEF((uint32_t) JitBackend::CUDA |
  */
 extern JIT_EXPORT void
 jit_init_async(uint32_t backends JIT_DEF((uint32_t) JitBackend::CUDA |
-                                         (uint32_t) JitBackend::LLVM));
+                                         (uint32_t) JitBackend::LLVM |
+                                         (uint32_t) JitBackend::Vulkan));
 
 /// Check whether the LLVM backend was successfully initialized
 extern JIT_EXPORT int jit_has_backend(JIT_ENUM JitBackend backend);

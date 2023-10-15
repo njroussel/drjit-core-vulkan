@@ -27,6 +27,11 @@ using Int32L  = LLVMArray<int32_t>;
 using UInt32L = LLVMArray<uint32_t>;
 using MaskL   = LLVMArray<bool>;
 using HalfL   = LLVMArray<drjit::half>;
+using FloatV  = VulkanArray<float>;
+using Int32V  = VulkanArray<int32_t>;
+using UInt32V = VulkanArray<uint32_t>;
+using MaskV   = VulkanArray<bool>;
+using HalfV   = VulkanArray<drjit::half>;
 
 #define TEST_REGISTER_CUDA(name, suffix, FloatType, ...)                       \
     int test##name##_##suffix =                                                \
@@ -67,6 +72,19 @@ using HalfL   = LLVMArray<drjit::half>;
     void test##name();                                                         \
     TEST_REGISTER_LLVM(name,    _llvm_fp32,     FloatL)                        \
     TEST_REGISTER_LLVM(name,    _llvm_fp16,     HalfL)                         \
+    template <JitBackend Backend, typename Float, typename Int32,              \
+              typename UInt32, typename Mask, template <class> class Array>    \
+    void test##name()
+
+#define TEST_VULKAN(name, ...)                                                 \
+    template <JitBackend Backend, typename Float, typename Int32,              \
+              typename UInt32, typename Mask, template <class> class Array>    \
+    void test##name();                                                         \
+    int test##name##_v =                                                       \
+        test_register("test" #name "_vulkan",                                  \
+                      test##name<JitBackend::Vulkan, FloatV, Int32V, UInt32V,  \
+                                 MaskV, VulkanArray>,                          \
+                      ##__VA_ARGS__);                                          \
     template <JitBackend Backend, typename Float, typename Int32,              \
               typename UInt32, typename Mask, template <class> class Array>    \
     void test##name()

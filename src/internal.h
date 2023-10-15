@@ -13,6 +13,7 @@
 #include "malloc.h"
 #include "cuda.h"
 #include "llvm.h"
+#include "vulkan.h"
 #include "alloc.h"
 #include "io.h"
 #include <queue>
