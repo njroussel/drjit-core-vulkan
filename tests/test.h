@@ -23,6 +23,10 @@ using FloatL  = LLVMArray<float>;
 using Int32L  = LLVMArray<int32_t>;
 using UInt32L = LLVMArray<uint32_t>;
 using MaskL   = LLVMArray<bool>;
+using FloatV  = VulkanArray<float>;
+using Int32V  = VulkanArray<int32_t>;
+using UInt32V = VulkanArray<uint32_t>;
+using MaskV   = VulkanArray<bool>;
 
 #define TEST_CUDA(name, ...)                                                   \
     template <JitBackend Backend, typename Float, typename Int32,              \
@@ -50,6 +54,19 @@ using MaskL   = LLVMArray<bool>;
         test_register("test" #name "_llvm",                                    \
                       test##name<JitBackend::LLVM, FloatL, Int32L, UInt32L,    \
                                  MaskL, LLVMArray>,                            \
+                      ##__VA_ARGS__);                                          \
+    template <JitBackend Backend, typename Float, typename Int32,              \
+              typename UInt32, typename Mask, template <class> class Array>    \
+    void test##name()
+
+#define TEST_VULKAN(name, ...)                                                 \
+    template <JitBackend Backend, typename Float, typename Int32,              \
+              typename UInt32, typename Mask, template <class> class Array>    \
+    void test##name();                                                         \
+    int test##name##_v =                                                       \
+        test_register("test" #name "_vulkan",                                  \
+                      test##name<JitBackend::Vulkan, FloatV, Int32V, UInt32V,  \
+                                 MaskV, VulkanArray>,                          \
                       ##__VA_ARGS__);                                          \
     template <JitBackend Backend, typename Float, typename Int32,              \
               typename UInt32, typename Mask, template <class> class Array>    \

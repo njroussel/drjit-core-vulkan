@@ -458,5 +458,6 @@ void jit_eval(Args&&... args) {
 
 template <typename T> using CUDAArray = JitArray<JitBackend::CUDA, T>;
 template <typename T> using LLVMArray = JitArray<JitBackend::LLVM, T>;
+template <typename T> using VulkanArray = JitArray<JitBackend::Vulkan, T>;
 
 NAMESPACE_END(drjit)

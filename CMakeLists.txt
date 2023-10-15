@@ -128,6 +128,9 @@ add_library(
   src/llvm_orcv2.cpp
   src/llvm_eval.cpp
 
+  # Vulkan backend
+  src/vulkan_core.cpp
+
   src/io.h            src/io.cpp
   src/eval.h          src/eval.cpp
   src/vcall.h         src/vcall.cpp

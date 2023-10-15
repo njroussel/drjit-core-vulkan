@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
 #endif
 
     int log_level_stderr = (int) LogLevel::Warn;
-    bool test_cuda = true, test_optix = true, test_llvm = true,
+    bool test_cuda = true, test_optix = true, test_llvm = true, test_vulkan = true,
          write_ref = false, help = false;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-w") == 0) {
@@ -296,11 +296,18 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-c") == 0) {
             test_llvm = false;
             test_optix = false;
+            test_vulkan = false;
         } else if (strcmp(argv[i], "-l") == 0) {
             test_cuda = false;
             test_optix = false;
+            test_vulkan = false;
         } else if (strcmp(argv[i], "-o") == 0) {
             test_cuda = false;
+            test_llvm = false;
+            test_vulkan = false;
+        } else if (strcmp(argv[i], "-vulkan") == 0) {
+            test_cuda = false;
+            test_optix = false;
             test_llvm = false;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             help = true;
@@ -319,6 +326,7 @@ int main(int argc, char **argv) {
         printf(" -c   Only run CUDA tests\n\n");
         printf(" -l   Only run LLVM tests\n\n");
         printf(" -o   Only run OptiX tests\n\n");
+        printf(" -vulkan   Only run Vulkan tests\n\n");
         printf(" -v   Be more verbose (can be repeated)\n\n");
         return 0;
     }
@@ -326,12 +334,14 @@ int main(int argc, char **argv) {
     try {
         jit_set_log_level_stderr((LogLevel) log_level_stderr);
         jit_init((test_llvm ? (uint32_t) JitBackend::LLVM : 0) |
-                 ((test_cuda || test_optix) ? (uint32_t) JitBackend::CUDA : 0));
+                 ((test_cuda || test_optix) ? (uint32_t) JitBackend::CUDA : 0) |
+                 (test_vulkan ? (uint32_t) JitBackend::Vulkan : 0));
         jit_set_log_level_callback(LogLevel::Trace, log_level_callback);
         fprintf(stdout, "\n");
 
         test_cuda &= (bool) jit_has_backend(JitBackend::CUDA);
         test_llvm &= (bool) jit_has_backend(JitBackend::LLVM);
+        test_vulkan &= (bool) jit_has_backend(JitBackend::Vulkan);
 
 #if defined(DRJIT_ENABLE_OPTIX)
         test_optix &= (bool) jit_has_backend(JitBackend::CUDA);
@@ -356,19 +366,27 @@ int main(int argc, char **argv) {
 
             bool is_cuda = strstr(test.name, "_cuda"),
                  is_llvm = strstr(test.name, "_llvm"),
-                 is_optix = strstr(test.name, "_optix");
+                 is_optix = strstr(test.name, "_optix"),
+                 is_vulkan = strstr(test.name, "_vulkan");
 
             if ((is_cuda && !test_cuda) ||
                 (is_optix && !test_optix) ||
-                (is_llvm && !test_llvm)) {
+                (is_llvm && !test_llvm) ||
+                (is_vulkan && !test_vulkan)) {
                 fprintf(stdout, "skipped.\n");
                 continue;
             }
 
             fflush(stdout);
             log_value.clear();
-            jit_init((uint32_t)((is_cuda || is_optix) ? JitBackend::CUDA
-                                                      : JitBackend::LLVM));
+
+            if (is_cuda || is_optix)
+                jit_init(JitBackend::CUDA);
+            else if (is_llvm)
+                jit_init(JitBackend::LLVM);
+            else
+                jit_init(JitBackend::Vulkan);
+
 #if defined(DRJIT_ENABLE_OPTIX)
             jit_set_flag(JitFlag::ForceOptiX, is_optix);
             if (is_optix)
