@@ -62,6 +62,13 @@ bool jitc_vulkan_api_init() {
             symbol = nullptr
 
         LOAD(vkCreateInstance);
+        LOAD(vkDestroyInstance);
+        LOAD(vkEnumerateInstanceLayerProperties);
+        LOAD(vkEnumeratePhysicalDevices);
+        LOAD(vkGetPhysicalDeviceQueueFamilyProperties);
+        LOAD(vkCreateDevice);
+        LOAD(vkDestroyDevice);
+        LOAD(vkGetDeviceQueue);
 
         #undef LOAD
     } while (false);
@@ -83,6 +90,13 @@ void jitc_vulkan_api_shutdown() {
 
     #define Z(x) x = nullptr
     Z(vkCreateInstance);
+    Z(vkDestroyInstance);
+    Z(vkEnumerateInstanceLayerProperties);
+    Z(vkEnumeratePhysicalDevices);
+    Z(vkGetPhysicalDeviceQueueFamilyProperties);
+    Z(vkCreateDevice);
+    Z(vkDestroyDevice);
+    Z(vkGetDeviceQueue);
     #undef Z
 
 #if !defined(_WIN32)
