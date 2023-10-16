@@ -16,3 +16,7 @@ extern bool jitc_vulkan_init();
 
 /// Free any resources allocated by jitc_vulkan_init()
 extern void jitc_vulkan_shutdown();
+
+/// Assert that a Vulkan operation is correctly issued
+#define vulkan_check(err) vulkan_check_impl(err, __FILE__, __LINE__)
+extern void vulkan_check_impl(VkResult errval, const char *file, const int line);
