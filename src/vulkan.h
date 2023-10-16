@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "vulkan_api.h"
 
 /// Try to load Vulkan
 extern bool jitc_vulkan_init();
