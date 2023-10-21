@@ -198,8 +198,8 @@ void jitc_shutdown(int light) {
 
         lock_guard guard(state.alloc_free_lock);
         for (auto it = state.alloc_free.begin(); it != state.alloc_free.end(); ++it) {
-            auto [size, type, device] = alloc_info_decode(it->first);
-            (void) device;
+            auto [size, type, backend, device] = alloc_info_decode(it->first);
+            (void) device; (void) backend;
 
             if (type != AllocType::Device)
                 continue;
@@ -390,7 +390,7 @@ ThreadState *jitc_init_thread_state(JitBackend backend) {
         ts->stream = device.stream;
         ts->event = device.event;
         thread_state_cuda = ts;
-    } else {
+    } else if (backend == JitBackend::LLVM) {
         if ((state.backends & (uint32_t) JitBackend::LLVM) == 0) {
             delete ts;
             #if defined(_WIN32)

@@ -135,7 +135,7 @@ void* jitc_malloc(AllocType type, size_t size) {
         device = ts->device;
     }
 
-    AllocInfo ai = alloc_info_encode(size, type, device);
+    AllocInfo ai = alloc_info_encode(size, type, backend, device);
     const char *descr = nullptr;
     void *ptr = nullptr;
 
@@ -217,7 +217,7 @@ void jitc_free(void *ptr) {
     AllocInfo info = it->second;
     state.alloc_used.erase(it);
 
-    auto [size, type, device] = alloc_info_decode(info);
+    auto [size, type, backend, device] = alloc_info_decode(info);
     state.alloc_usage[(int) type] -= size;
 
     if (type != AllocType::HostPinned) {
@@ -268,7 +268,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
     if (unlikely(it == state.alloc_used.end()))
         jitc_raise("jit_malloc_migrate(): unknown address " DRJIT_PTR "!", (uintptr_t) ptr);
 
-    auto [size, src_type, device] = alloc_info_decode(it->second);
+    auto [size, src_type, prev_backend, device] = alloc_info_decode(it->second);
 
     JitBackend src_backend =
         (src_type == AllocType::Device || src_type == AllocType::HostPinned)
@@ -298,7 +298,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
             state.alloc_usage[(int) dst_type] += size;
             state.alloc_allocated[(int) src_type] -= size;
             state.alloc_allocated[(int) dst_type] += size;
-            it.value() = alloc_info_encode(size, dst_type, device);
+            it.value() = alloc_info_encode(size, dst_type, JitBackend::LLVM, device);
             return ptr;
         } else {
             void *ptr_new = jitc_malloc(dst_type, size);
@@ -384,7 +384,7 @@ void jitc_flush_malloc_cache(bool warn) {
         unlock_guard guard(state.lock);
 
         for (auto& kv : alloc_free) {
-            auto [size, type, device] = alloc_info_decode(kv.first);
+            auto [size, type, bakend, device] = alloc_info_decode(kv.first);
             const std::vector<void *> &entries = kv.second;
 
             trim_count[(int) type] += entries.size();
@@ -450,8 +450,8 @@ AllocType jitc_malloc_type(void *ptr) {
     auto it = state.alloc_used.find((uintptr_t) ptr);
     if (unlikely(it == state.alloc_used.end()))
         jitc_raise("jit_malloc_type(): unknown address " DRJIT_PTR "!", (uintptr_t) ptr);
-    auto [size, type, device] = alloc_info_decode(it->second);
-    (void) size; (void) device;
+    auto [size, type, backend, device] = alloc_info_decode(it->second);
+    (void) size; (void) device; (void) backend;
     return type;
 }
 
@@ -460,8 +460,8 @@ int jitc_malloc_device(void *ptr) {
     auto it = state.alloc_used.find((uintptr_t) ptr);
     if (unlikely(it == state.alloc_used.end()))
         jitc_raise("jitc_malloc_device(): unknown address " DRJIT_PTR "!", (uintptr_t) ptr);
-    auto [size, type, device] = alloc_info_decode(it->second);
-    (void) size;
+    auto [size, type, backend, device] = alloc_info_decode(it->second);
+    (void) size; (void) backend;
 
     if (type == AllocType::Host || type == AllocType::HostAsync)
         return -1;
@@ -475,8 +475,8 @@ void jitc_malloc_shutdown() {
     size_t leak_count[(int) AllocType::Count] = { 0 },
            leak_size [(int) AllocType::Count] = { 0 };
     for (auto kv : state.alloc_used) {
-        auto [size, type, device] = alloc_info_decode(kv.second);
-        (void) device;
+        auto [size, type, backend, device] = alloc_info_decode(kv.second);
+        (void) device; (void) backend;
         leak_count[(int) type]++;
         leak_size[(int) type] += size;
     }
