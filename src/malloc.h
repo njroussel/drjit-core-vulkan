@@ -16,15 +16,19 @@
 
 using AllocInfo = uint64_t;
 
-inline AllocInfo alloc_info_encode(size_t size, AllocType type, int device) {
-    return (((uint64_t) size) << 16) + (((uint64_t) type) << 8) +
-           ((uint64_t) device);
+inline AllocInfo alloc_info_encode(size_t size, AllocType type,
+                                   JitBackend backend, int device) {
+  return (((uint64_t)size) << 16) + (((uint64_t)type) << 8) +
+         (((uint64_t)backend) << 4) + ((uint64_t)device);
 }
 
-inline drjit::tuple<size_t, AllocType, int> alloc_info_decode(AllocInfo value) {
-    return drjit::make_tuple((size_t)(value >> 16),
-                           (AllocType)((value >> 8) & 0xFF),
-                           (int) (value & 0xFF));
+inline drjit::tuple<size_t, AllocType, JitBackend, int>
+alloc_info_decode(AllocInfo value) {
+  return drjit::tuple(
+      (size_t)(value >> 16),
+      (AllocType)((value >> 8) & 0xFF),
+      (JitBackend)((value >> 4) & 0x0F),
+      (int)(value & 0x0F));
 }
 
 using AllocInfoMap = tsl::robin_map<AllocInfo, std::vector<void *>, UInt64Hasher>;

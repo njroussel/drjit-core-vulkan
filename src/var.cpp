@@ -1776,8 +1776,8 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
         dst_ptr = jitc_malloc(dst_type, size);
         jitc_memcpy_async(backend, dst_ptr, src_ptr, size);
     } else {
-        auto [size, type, device] = alloc_info_decode(it->second);
-        (void) size; (void) device;
+        auto [size, type, backend, device] = alloc_info_decode(it->second);
+        (void) size; (void) device; (void) backend;
         src_type = type;
         dst_ptr = jitc_malloc_migrate(src_ptr, dst_type, 0);
     }
@@ -2434,8 +2434,8 @@ const char *jitc_var_whos() {
                 else
                     var_buffer.put("mapped mem.");
             } else {
-                auto [size, type, device] = alloc_info_decode(it->second);
-                (void) size;
+                auto [size, type, backend, device] = alloc_info_decode(it->second);
+                (void) size; (void) backend;
 
                 if ((AllocType) type == AllocType::Device) {
                     var_buffer.fmt("device %-4i", (int) device);

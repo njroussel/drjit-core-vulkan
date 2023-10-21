@@ -202,8 +202,8 @@ void jitc_shutdown(int light) {
 
         lock_guard guard(state.alloc_free_lock);
         for (auto it = state.alloc_free.begin(); it != state.alloc_free.end(); ++it) {
-            auto [size, type, device] = alloc_info_decode(it->first);
-            (void) device;
+            auto [size, type, backend, device] = alloc_info_decode(it->first);
+            (void) device; (void) backend;
 
             if (type != AllocType::Device)
                 continue;
