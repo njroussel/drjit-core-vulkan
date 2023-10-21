@@ -39,10 +39,12 @@ State state;
 
 #if defined(_MSC_VER)
   __declspec(thread) ThreadState* thread_state_cuda = nullptr;
+  __declspec(thread) ThreadState* thread_state_vulkan = nullptr;
   __declspec(thread) ThreadState* thread_state_llvm = nullptr;
   __declspec(thread) uint32_t jitc_flags_v = (uint32_t) JitFlag::Default;
 #else
   __thread ThreadState* thread_state_cuda = nullptr;
+  __thread ThreadState* thread_state_vulkan = nullptr;
   __thread ThreadState* thread_state_llvm = nullptr;
   __thread uint32_t jitc_flags_v = (uint32_t) JitFlag::Default;
 #endif
@@ -407,6 +409,24 @@ ThreadState *jitc_init_thread_state(JitBackend backend) {
         }
         thread_state_llvm = ts;
         ts->device = -1;
+    } else if (backend == JitBackend::Vulkan) {
+        if ((state.backends & (uint32_t) JitBackend::Vulkan) == 0) {
+            delete ts;
+            if (!jitc_vulkan_instance) {
+                jitc_raise(
+                    "jit_init_thread_state(): the Vulkan backend hasn't been "
+                    "initialized. Make sure to call "
+                    "jit_init(JitBackend::Vulkan) "
+                    "to properly initialize this backend.");
+            } else {
+                //TODO: better understand how we could reach this
+                jitc_raise("jit_init_thread_state(): something went wrong with "
+                           "the Vulkan backend.");
+            }
+        }
+        thread_state_vulkan = ts;
+    } else {
+        jitc_raise("jit_init_thread_state(): unknown JIT backend!");
     }
 
     ts->backend = backend;

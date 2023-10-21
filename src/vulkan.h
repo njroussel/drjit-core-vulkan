@@ -11,6 +11,11 @@
 
 #include "vulkan_api.h"
 
+extern VkInstance jitc_vulkan_instance;
+extern VkDevice jitc_vulkan_device;
+extern VkQueue jitc_vulkan_queue;
+
+
 /// Try to load Vulkan
 extern bool jitc_vulkan_init();
 
