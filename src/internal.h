@@ -226,13 +226,13 @@ struct alignas(64) Variable {
     uint32_t unused;
 
     // ================  Essential flags used in the LVN key  =================
-    // (+15 bits)
+    // (+16 bits)
 
     // Variable kind (IR statement / literal constant / data)
     uint32_t kind : 8;
 
     /// Backend associated with this variable
-    uint32_t backend : 2;
+    uint32_t backend : 3;
 
     /// Variable type (Bool/Int/Float/....)
     uint32_t type : 4;
@@ -241,7 +241,7 @@ struct alignas(64) Variable {
     uint32_t write_ptr : 1;
 
     // =======================  Miscellaneous flags ==========================
-    // (+6 bits)
+    // (+5 bits)
 
     /// If set, 'data' will not be deallocated when the variable is destructed
     uint32_t retain_data : 1;
@@ -257,9 +257,6 @@ struct alignas(64) Variable {
 
     /// If set, evaluation will have side effects on other variables
     uint32_t side_effect : 1;
-
-    /// Unused flag
-    uint32_t unused_2: 1;
 
     // =========== Entries that are temporarily used in jitc_eval() ============
     // (+11 bits -> 32 bits with all the preceding individiual bits = 4 bytes)

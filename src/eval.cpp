@@ -317,8 +317,9 @@ void jitc_assemble(ThreadState *ts, ScheduledGroup group) {
                 dsize += 4 - isize;
 
             sv.data = jitc_malloc(
-                backend == JitBackend::CUDA ? AllocType::Device
-                                            : AllocType::HostAsync,
+                backend,
+                jit_is_device_backend(backend) ? AllocType::Device
+                                               : AllocType::HostAsync,
                 dsize); // Note: unsafe to access 'v' after jitc_malloc().
 
             kernel_params.push_back(sv.data);
@@ -358,8 +359,8 @@ void jitc_assemble(ThreadState *ts, ScheduledGroup group) {
     if (backend == JitBackend::CUDA &&
         (uses_optix || kernel_param_count > DRJIT_CUDA_ARG_LIMIT)) {
         size_t size = kernel_param_count * sizeof(void *);
-        uint8_t *tmp = (uint8_t *) jitc_malloc(AllocType::HostPinned, size);
-        kernel_params_global = (uint8_t *) jitc_malloc(AllocType::Device, size);
+        uint8_t *tmp = (uint8_t *) jitc_malloc(JitBackend::CUDA, AllocType::HostPinned, size);
+        kernel_params_global = (uint8_t *) jitc_malloc(JitBackend::CUDA, AllocType::Device, size);
         memcpy(tmp, kernel_params.data(), size);
         jitc_memcpy_async(backend, kernel_params_global, tmp, size);
         jitc_free(tmp);

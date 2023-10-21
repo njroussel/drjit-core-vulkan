@@ -776,10 +776,10 @@ uint32_t jitc_var_literal(JitBackend backend, VarType type, const void *value,
         return jitc_var_new(v);
     } else {
         uint32_t isize = type_size[(int) type];
-        void *data =
-            jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                    : AllocType::HostAsync,
-                        size * (size_t) isize);
+        void *data = jitc_malloc(backend,
+                                 jit_is_device_backend(backend) ? AllocType::Device
+                                                                : AllocType::HostAsync,
+                                 size * (size_t) isize);
         jitc_memset_async(backend, data, (uint32_t) size, isize, value);
         return jitc_var_mem_map(backend, type, data, size, 1);
     }
@@ -1288,10 +1288,11 @@ static void jitc_raise_consumed_error(const char *func, uint32_t index) {
 uint32_t jitc_var_eval_force(uint32_t index, Variable &v_, void **ptr_out) {
     Variable v = v_;
     uint32_t isize = type_size[v.type];
+    JitBackend backend = (JitBackend) v.backend;
 
-    void *ptr = jitc_malloc((JitBackend) v.backend == JitBackend::CUDA
-                                ? AllocType::Device
-                                : AllocType::HostAsync,
+    void *ptr = jitc_malloc(backend,
+                            jit_is_device_backend(backend) ? AllocType::Device
+                                                           : AllocType::HostAsync,
                             v.size * (size_t) isize);
 
     if (v.is_literal()) {
@@ -1403,7 +1404,6 @@ uint32_t jitc_var_schedule_force(uint32_t index, int *rv) {
     return index;
 }
 
-
 /// Evaluate the variable \c index right away if it is unevaluated/dirty.
 int jitc_var_eval(uint32_t index) {
     if (!jitc_var_schedule(index))
@@ -1506,13 +1506,13 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
 
     ThreadState *ts = thread_state(backend);
     if (backend == JitBackend::CUDA) {
-        target_ptr = jitc_malloc(AllocType::Device, total_size);
+        target_ptr = jitc_malloc(backend, AllocType::Device, total_size);
 
         scoped_set_context guard(ts->context);
         if (atype == AllocType::HostAsync) {
             jitc_fail("jit_var_mem_copy(): copy from HostAsync to GPU memory not supported!");
         } else if (atype == AllocType::Host) {
-            void *host_ptr = jitc_malloc(AllocType::HostPinned, total_size);
+            void *host_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
             CUresult rv;
             {
                 unlock_guard guard2(state.lock);
@@ -1530,17 +1530,17 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
         }
     } else {
         if (atype == AllocType::HostAsync) {
-            target_ptr = jitc_malloc(AllocType::HostAsync, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::HostAsync, total_size);
             jitc_memcpy_async(backend, target_ptr, ptr, total_size);
         } else if (atype == AllocType::Host) {
-            target_ptr = jitc_malloc(AllocType::Host, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::Host, total_size);
             {
                 unlock_guard guard(state.lock);
                 memcpy(target_ptr, ptr, total_size);
             }
-            target_ptr = jitc_malloc_migrate(target_ptr, AllocType::HostAsync, 1);
+            target_ptr = jitc_malloc_migrate(target_ptr, backend, AllocType::HostAsync, 1);
         } else {
-            target_ptr = jitc_malloc(AllocType::HostPinned, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
             cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
                                      (CUdeviceptr) ptr, total_size,
                                      ts->stream));
@@ -1701,7 +1701,7 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
 
     if (v->is_literal() || v->is_undefined()) {
         size_t size = v->size;
-        void *ptr = jitc_malloc(dst_type, type_size[v->type] * size);
+        void *ptr = jitc_malloc(backend, dst_type, type_size[v->type] * size);
         v = jitc_var(src_index);
 
         if (v->is_literal()) {
@@ -1773,13 +1773,13 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
         }
 
         size_t size = type_size[v->type] * v->size;
-        dst_ptr = jitc_malloc(dst_type, size);
+        dst_ptr = jitc_malloc(backend, dst_type, size);
         jitc_memcpy_async(backend, dst_ptr, src_ptr, size);
     } else {
         auto [size, type, backend, device] = alloc_info_decode(it->second);
         (void) size; (void) device; (void) backend;
         src_type = type;
-        dst_ptr = jitc_malloc_migrate(src_ptr, dst_type, 0);
+        dst_ptr = jitc_malloc_migrate(src_ptr, backend, dst_type, 0);
     }
 
     uint32_t dst_index = src_index;
@@ -1976,8 +1976,10 @@ uint32_t jitc_var_compress(uint32_t index) {
         const uint32_t size_in = v->size;
         const uint8_t *ptr = (const uint8_t *) v->data;
 
-        uint32_t *indices_out = (uint32_t *) jitc_malloc(
-            backend == JitBackend::CUDA ? AllocType::Device : AllocType::HostAsync,
+        uint32_t *indices_out = (uint32_t *)jitc_malloc(
+            backend,
+            jit_is_device_backend(backend) ? AllocType::Device
+                                           : AllocType::HostAsync,
             size_in * sizeof(uint32_t));
 
         uint32_t size_out = jitc_compress(backend, ptr, size_in, indices_out);
@@ -2108,9 +2110,10 @@ uint32_t jitc_var_block_reduce(ReduceOp op, uint32_t index, uint32_t block_size,
         jitc_log(Debug, "jit_var_block_reduce(r%u, block_size=%u)", index, block_size);
 
         void *out =
-            jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                    : AllocType::HostAsync,
-                        reduced * (size_t) type_size[(int) vt]);
+            jitc_malloc(backend,
+                        jit_is_device_backend(backend) ? AllocType::Device
+                                                       : AllocType::HostAsync,
+                        reduced * (size_t)type_size[(int)vt]);
         Ref out_v = steal(jitc_var_mem_map(backend, vt, out, reduced, 1));
         jitc_block_reduce(backend, vt, op, jitc_var(index)->data, size, block_size, out);
 
@@ -2230,10 +2233,10 @@ uint32_t jitc_var_reduce(JitBackend backend, VarType vt, ReduceOp op,
     uint8_t *values = (uint8_t *) v->data;
     uint32_t size = v->size;
 
-    void *data =
-        jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                : AllocType::HostAsync,
-                    (size_t) type_size[(int) vt]);
+    void *data = jitc_malloc(backend,
+                             jit_is_device_backend(backend) ? AllocType::Device
+                                                            : AllocType::HostAsync,
+                             (size_t) type_size[(int) vt]);
     jitc_reduce(backend, vt, op, values, size, data);
     return jitc_var_mem_map(backend, vt, data, 1, 1);
 }
@@ -2271,8 +2274,9 @@ uint32_t jitc_var_reduce_dot(uint32_t index_1, uint32_t index_2) {
 
         void *ptr_1 = v1->data,
              *ptr_2 = v2->data,
-             *data = jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                             : AllocType::HostAsync,
+             *data = jitc_malloc(backend,
+                                 jit_is_device_backend(backend) ? AllocType::Device
+                                                                : AllocType::HostAsync,
                                  (size_t) type_size[(int) vt]);
 
         jitc_reduce_dot(backend, vt, ptr_1, ptr_2, size, data);
@@ -2313,8 +2317,9 @@ uint32_t jitc_var_prefix_sum(uint32_t index, bool exclusive) {
     const void *data_in = v->data;
 
     void *data_out =
-        jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                : AllocType::HostAsync,
+        jitc_malloc(backend,
+                    jit_is_device_backend(backend) ? AllocType::Device
+                                                   : AllocType::HostAsync,
                     (size_t) type_size[(int) vt] * size);
 
     Ref result = steal(jitc_var_mem_map(backend, vt, data_out, size, 1));

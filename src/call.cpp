@@ -232,10 +232,10 @@ void jitc_var_call(const char *name, bool symbolic, uint32_t self,
     // Allocate memory + wrapper variables for call offset and data arrays
     call->offset_size = (inst_id_max + 1) * sizeof(uint64_t);
 
-    AllocType at =
-        backend == JitBackend::CUDA ? AllocType::Device : AllocType::HostAsync;
-    call->offset = (uint64_t *) jitc_malloc(at, call->offset_size);
-    uint8_t *data_d = (uint8_t *) jitc_malloc(at, data_size);
+    AllocType at = jit_is_device_backend(backend) ? AllocType::Device
+                                                  : AllocType::HostAsync;
+    call->offset = (uint64_t *) jitc_malloc(backend, at, call->offset_size);
+    uint8_t *data_d = (uint8_t *) jitc_malloc(backend, at, data_size);
 
     Ref data_buf, data_v,
         offset_buf = steal(jitc_var_mem_map(
@@ -259,7 +259,7 @@ void jitc_var_call(const char *name, bool symbolic, uint32_t self,
         size_t agg_size = sizeof(AggregationEntry) * call->data_map.size();
 
         if (backend == JitBackend::CUDA)
-            agg = (AggregationEntry *) jitc_malloc(AllocType::HostPinned, agg_size);
+            agg = (AggregationEntry *) jitc_malloc(backend, AllocType::HostPinned, agg_size);
         else
             agg = (AggregationEntry *) malloc_check(agg_size);
 
@@ -650,7 +650,7 @@ void jitc_call_upload(ThreadState *ts) {
     for (CallData *call : calls_assembled) {
         uint64_t *data;
         if (ts->backend == JitBackend::CUDA)
-            data = (uint64_t *) jitc_malloc(AllocType::HostPinned, call->offset_size);
+            data = (uint64_t *) jitc_malloc(ts->backend, AllocType::HostPinned, call->offset_size);
         else
             data = (uint64_t *) malloc_check(call->offset_size);
 
@@ -749,9 +749,15 @@ CallBucket *jitc_var_call_reduce(JitBackend backend, const char *domain,
         perm_size += jitc_llvm_vector_width * sizeof(uint32_t);
 
     uint8_t *offsets = (uint8_t *) jitc_malloc(
-        backend == JitBackend::CUDA ? AllocType::HostPinned : AllocType::Host, offsets_size);
+            backend,
+            jit_is_device_backend(backend) ? AllocType::HostPinned
+                                           : AllocType::Host,
+            offsets_size);
     uint32_t *perm = (uint32_t *) jitc_malloc(
-        backend == JitBackend::CUDA ? AllocType::Device : AllocType::HostAsync, perm_size);
+            backend,
+            jit_is_device_backend(backend) ? AllocType::Device
+                                           : AllocType::HostAsync,
+            perm_size);
 
     // Compute permutation
     uint32_t unique_count = jitc_mkperm(backend, (const uint32_t *) self, size,

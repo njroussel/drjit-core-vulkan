@@ -460,7 +460,7 @@ void LLVMThreadState::reduce(VarType type, ReduceOp op, const void *ptr,
 
     void *target = out;
     if (blocks > 1)
-        target = jitc_malloc(AllocType::HostAsync, blocks * tsize);
+        target = jitc_malloc(backend, AllocType::HostAsync, blocks * tsize);
 
     Reduction reduction = jitc_reduce_create(type, op);
     submit_cpu(
@@ -558,7 +558,7 @@ void LLVMThreadState::reduce_dot(VarType type, const void *ptr_1,
 
     void *target = out;
     if (blocks > 1)
-        target = jitc_malloc(AllocType::HostAsync, blocks * tsize);
+        target = jitc_malloc(backend, AllocType::HostAsync, blocks * tsize);
 
     Reduction2 reduction = jitc_reduce_dot_create(type);
     submit_cpu(
@@ -719,7 +719,7 @@ void LLVMThreadState::prefix_sum(VarType vt, bool exclusive, const void *in,
     void *scratch = nullptr;
 
     if (blocks > 1) {
-        scratch = (void *) jitc_malloc(AllocType::HostAsync, blocks * isize);
+        scratch = (void *) jitc_malloc(backend, AllocType::HostAsync, blocks * isize);
 
         submit_cpu(
             KernelType::Other,
@@ -770,7 +770,7 @@ uint32_t LLVMThreadState::compress(const uint8_t *in, uint32_t size,
     uint32_t *scratch = nullptr;
 
     if (blocks > 1) {
-        scratch = (uint32_t *) jitc_malloc(AllocType::HostAsync,
+        scratch = (uint32_t *) jitc_malloc(backend, AllocType::HostAsync,
                                            blocks * sizeof(uint32_t));
 
         submit_cpu(
@@ -854,7 +854,7 @@ uint32_t LLVMThreadState::mkperm(const uint32_t *ptr, uint32_t size,
             (uintptr_t) ptr, size, bucket_count, block_size, blocks);
 
     uint32_t **buckets =
-        (uint32_t **) jitc_malloc(AllocType::HostAsync, sizeof(uint32_t *) * blocks);
+        (uint32_t **) jitc_malloc(backend, AllocType::HostAsync, sizeof(uint32_t *) * blocks);
 
     uint32_t unique_count = 0;
 

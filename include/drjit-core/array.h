@@ -397,8 +397,9 @@ template <typename Array>
 Array empty(size_t size) {
     size_t byte_size = size * sizeof(typename Array::Value);
     void *ptr =
-        jit_malloc(Array::Backend == JitBackend::CUDA ? AllocType::Device
-                                                      : AllocType::HostAsync,
+        jit_malloc(Array::Backend,
+                   jit_is_device_backend(Array::Backend) ? AllocType::Device
+                                                         : AllocType::HostAsync,
                    byte_size);
     return Array::steal(
         jit_var_mem_map(Array::Backend, Array::Type, ptr, size, 1));

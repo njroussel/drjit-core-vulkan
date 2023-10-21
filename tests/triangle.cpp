@@ -41,7 +41,7 @@ void demo() {
     float h_vertices[9] = { -0.8f, -0.8f, 0.0f,
                              0.8f, -0.8f, 0.0f,
                              0.0f,  0.8f, 0.0f };
-    void *d_vertices = jit_malloc(AllocType::Device, sizeof(h_vertices));
+    void *d_vertices = jit_malloc(JitBackend::CUDA, AllocType::Device, sizeof(h_vertices));
     jit_memcpy(JitBackend::CUDA, d_vertices, h_vertices, sizeof(h_vertices));
 
     // =====================================================
@@ -67,12 +67,12 @@ void demo() {
         context, &accel_options, &triangle_input, 1, &gas_buffer_sizes));
 
     void *d_gas_temp =
-        jit_malloc(AllocType::Device, gas_buffer_sizes.tempSizeInBytes);
+        jit_malloc(JitBackend::CUDA, AllocType::Device, gas_buffer_sizes.tempSizeInBytes);
 
     void *d_gas =
-        jit_malloc(AllocType::Device, gas_buffer_sizes.outputSizeInBytes);
+        jit_malloc(JitBackend::CUDA, AllocType::Device, gas_buffer_sizes.outputSizeInBytes);
 
-    size_t *d_compacted_size = (size_t *) jit_malloc(AllocType::Device, sizeof(size_t)),
+    size_t *d_compacted_size = (size_t *) jit_malloc(JitBackend::CUDA, AllocType::Device, sizeof(size_t)),
             h_compacted_size = 0;
     OptixAccelEmitDesc build_property = {};
     build_property.type = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
@@ -94,7 +94,7 @@ void demo() {
     jit_memcpy(JitBackend::CUDA, &h_compacted_size, d_compacted_size, sizeof(size_t));
 
     if (h_compacted_size < gas_buffer_sizes.outputSizeInBytes) {
-        void *d_gas_compact = jit_malloc(AllocType::Device, h_compacted_size);
+        void *d_gas_compact = jit_malloc(JitBackend::CUDA, AllocType::Device, h_compacted_size);
         jit_optix_check(optixAccelCompact(context, jit_cuda_stream(),
                                            gas_handle, d_gas_compact,
                                            h_compacted_size, &gas_handle));
@@ -172,12 +172,12 @@ void demo() {
     OptixShaderBindingTable sbt {};
 
     sbt.missRecordBase =
-        jit_malloc(AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
+        jit_malloc(JitBackend::CUDA, AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
     sbt.missRecordStrideInBytes     = OPTIX_SBT_RECORD_HEADER_SIZE;
     sbt.missRecordCount             = 1;
 
     sbt.hitgroupRecordBase =
-        jit_malloc(AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
+        jit_malloc(JitBackend::CUDA, AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
     sbt.hitgroupRecordStrideInBytes = OPTIX_SBT_RECORD_HEADER_SIZE;
     sbt.hitgroupRecordCount         = 1;
 
@@ -185,9 +185,9 @@ void demo() {
     jit_optix_check(optixSbtRecordPackHeader(pg[1], sbt.hitgroupRecordBase));
 
     sbt.missRecordBase =
-        jit_malloc_migrate(sbt.missRecordBase, AllocType::Device, 1);
+        jit_malloc_migrate(sbt.missRecordBase, JitBackend::CUDA, AllocType::Device, 1);
     sbt.hitgroupRecordBase =
-        jit_malloc_migrate(sbt.hitgroupRecordBase, AllocType::Device, 1);
+        jit_malloc_migrate(sbt.hitgroupRecordBase, JitBackend::CUDA, AllocType::Device, 1);
 
     // =====================================================
     // Let Dr.Jit know about all of this

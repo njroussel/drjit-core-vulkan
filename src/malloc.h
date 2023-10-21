@@ -43,13 +43,14 @@ extern const char *alloc_type_name[(int) AllocType::Count];
 extern const char *alloc_type_name_short[(int) AllocType::Count];
 
 /// Allocate the given flavor of memory
-extern void *jitc_malloc(AllocType type, size_t size) JIT_MALLOC;
+extern void *jitc_malloc(JitBackend backend, AllocType type, size_t size) JIT_MALLOC;
 
 /// Release the given pointer
 extern void jitc_free(void *ptr);
 
 /// Change the flavor of an allocated memory region
-extern void* jitc_malloc_migrate(void *ptr, AllocType type, int move);
+extern void *jitc_malloc_migrate(void *ptr, JitBackend backend, AllocType type,
+                                 int move);
 
 /// Release all unused memory to the GPU / OS
 extern void jitc_flush_malloc_cache(bool warn);
