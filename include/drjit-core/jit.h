@@ -101,6 +101,8 @@ enum JitBackend {
 };
 #endif
 
+extern JIT_EXPORT int jit_is_device_backend(JIT_ENUM JitBackend backend);
+
 /**
  * \brief Initialize a JIT compiler backend
  *

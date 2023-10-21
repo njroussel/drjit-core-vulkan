@@ -29,6 +29,18 @@
 
 #include <nanothread/nanothread.h>
 
+int jit_is_device_backend(JitBackend backend) {
+    switch(backend) {
+        case JitBackend::CUDA:
+        case JitBackend::Vulkan:
+            return true;
+        case JitBackend::LLVM:
+            return false;
+        default:
+            jitc_fail("jit_is_device_backend(): unknown JIT backend!");
+    }
+}
+
 void jit_init(uint32_t backends) {
     lock_guard guard(state.lock);
     jitc_init(backends);
