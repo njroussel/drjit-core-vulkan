@@ -575,10 +575,10 @@ uint32_t jitc_var_literal(JitBackend backend, VarType type, const void *value,
         return jitc_var_new(v);
     } else {
         uint32_t isize = type_size[(int) type];
-        void *data =
-            jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                    : AllocType::HostAsync,
-                        size * (size_t) isize);
+        void *data = jitc_malloc(backend,
+                                 jit_is_device_backend(backend) ? AllocType::Device
+                                                                : AllocType::HostAsync,
+                                 size * (size_t) isize);
         jitc_memset_async(backend, data, (uint32_t) size, isize, value);
         return jitc_var_mem_map(backend, type, data, size, 1);
     }
@@ -1048,9 +1048,10 @@ void jitc_var_eval_literal(uint32_t index, Variable *v) {
 
     JitBackend backend = (JitBackend) v->backend;
     uint32_t isize = type_size[v->type];
-    void* data = jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                         : AllocType::HostAsync,
-                             (size_t) v->size * (size_t) isize);
+    void *data = jitc_malloc(backend,
+                             jit_is_device_backend(backend) ? AllocType::Device
+                                                            : AllocType::HostAsync,
+                             (size_t)v->size * (size_t) isize);
     v = jitc_var(index);
     jitc_memset_async(backend, data, v->size, isize, &v->literal);
 
@@ -1172,13 +1173,13 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
 
     ThreadState *ts = thread_state(backend);
     if (backend == JitBackend::CUDA) {
-        target_ptr = jitc_malloc(AllocType::Device, total_size);
+        target_ptr = jitc_malloc(backend, AllocType::Device, total_size);
 
         scoped_set_context guard(ts->context);
         if (atype == AllocType::HostAsync) {
             jitc_fail("jit_var_mem_copy(): copy from HostAsync to GPU memory not supported!");
         } else if (atype == AllocType::Host) {
-            void *host_ptr = jitc_malloc(AllocType::HostPinned, total_size);
+            void *host_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
             CUresult rv;
             {
                 unlock_guard guard2(state.lock);
@@ -1196,17 +1197,17 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
         }
     } else {
         if (atype == AllocType::HostAsync) {
-            target_ptr = jitc_malloc(AllocType::HostAsync, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::HostAsync, total_size);
             jitc_memcpy_async(backend, target_ptr, ptr, total_size);
         } else if (atype == AllocType::Host) {
-            target_ptr = jitc_malloc(AllocType::Host, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::Host, total_size);
             {
                 unlock_guard guard(state.lock);
                 memcpy(target_ptr, ptr, total_size);
             }
-            target_ptr = jitc_malloc_migrate(target_ptr, AllocType::HostAsync, 1);
+            target_ptr = jitc_malloc_migrate(target_ptr, backend, AllocType::HostAsync, 1);
         } else {
-            target_ptr = jitc_malloc(AllocType::HostPinned, total_size);
+            target_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
             cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
                                      (CUdeviceptr) ptr, total_size,
                                      ts->stream));
@@ -1325,7 +1326,7 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
 
     if (v->is_literal()) {
         size_t size = v->size;
-        void *ptr = jitc_malloc(dst_type, type_size[v->type] * size);
+        void *ptr = jitc_malloc(backend, dst_type, type_size[v->type] * size);
         if (dst_type == AllocType::Host) {
             switch (type_size[v->type]) {
                 case 1: {
@@ -1393,13 +1394,13 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
         }
 
         size_t size = type_size[v->type] * v->size;
-        dst_ptr = jitc_malloc(dst_type, size);
+        dst_ptr = jitc_malloc(backend, dst_type, size);
         jitc_memcpy_async(backend, dst_ptr, src_ptr, size);
     } else {
         auto [size, type, backend, device] = alloc_info_decode(it->second);
         (void) size; (void) device; (void) backend;
         src_type = type;
-        dst_ptr = jitc_malloc_migrate(src_ptr, dst_type, 0);
+        dst_ptr = jitc_malloc_migrate(src_ptr, backend, dst_type, 0);
     }
 
     uint32_t dst_index = src_index;
@@ -1591,10 +1592,10 @@ uint32_t jitc_var_reduce(uint32_t index, ReduceOp reduce_op) {
     uint8_t *values = (uint8_t *) v->data;
     uint32_t size = v->size;
 
-    void *data =
-        jitc_malloc(backend == JitBackend::CUDA ? AllocType::Device
-                                                : AllocType::HostAsync,
-                    (size_t) type_size[(int) type]);
+    void *data = jitc_malloc(backend,
+                             jit_is_device_backend(backend) ? AllocType::Device
+                                                            : AllocType::HostAsync,
+                             (size_t)type_size[(int)type]);
     jitc_reduce(backend, type, reduce_op, values, size, data);
     return jitc_var_mem_map(backend, type, data, 1, 1);
 }

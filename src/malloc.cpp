@@ -105,7 +105,7 @@ static void aligned_free(void *ptr, size_t size) {
 #endif
 }
 
-void* jitc_malloc(AllocType type, size_t size) {
+void* jitc_malloc(JitBackend backend, AllocType type, size_t size) {
     if (size == 0)
         return nullptr;
 
@@ -123,16 +123,12 @@ void* jitc_malloc(AllocType type, size_t size) {
        can have to a manageable amount that facilitates re-use. */
     size = round_pow2(size);
 
-    JitBackend backend =
-        (type == AllocType::Device || type == AllocType::HostPinned)
-            ? JitBackend::CUDA
-            : JitBackend::LLVM;
-    ThreadState *ts = nullptr;
+    ThreadState *ts = thread_state(backend);
+    int device = ts->device;
 
-    int device = 0;
-    if (backend == JitBackend::CUDA) {
-        ts = thread_state(backend);
-        device = ts->device;
+    if (type != AllocType::Device && type != AllocType::HostPinned) {
+        backend = JitBackend::LLVM;
+        device = 0;
     }
 
     AllocInfo ai = alloc_info_encode(size, type, backend, device);
@@ -260,7 +256,7 @@ void jitc_malloc_clear_statistics() {
         state.alloc_watermark[i] = state.alloc_allocated[i];
 }
 
-void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
+void* jitc_malloc_migrate(void *ptr, JitBackend backend, AllocType dst_type, int move) {
     if (!ptr)
         return nullptr;
 
@@ -282,7 +278,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
         if (move) {
             return ptr;
         } else {
-            void *ptr_new = jitc_malloc(dst_type, size);
+            void *ptr_new = jitc_malloc(backend, dst_type, size);
             if (dst_type == AllocType::Host)
                 memcpy(ptr_new, ptr, size);
             else
@@ -301,7 +297,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
             it.value() = alloc_info_encode(size, dst_type, JitBackend::LLVM, device);
             return ptr;
         } else {
-            void *ptr_new = jitc_malloc(dst_type, size);
+            void *ptr_new = jitc_malloc(backend, dst_type, size);
             jitc_memcpy_async(src_backend, ptr_new, ptr, size);
 
             // When copying from the host, wait for the operation to finish
@@ -321,7 +317,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
     if (dst_type == AllocType::Host) // Upgrade from host to host-pinned memory
         dst_type = AllocType::HostPinned;
 
-    void *ptr_new = jitc_malloc(dst_type, size);
+    void *ptr_new = jitc_malloc(backend, dst_type, size);
     jitc_trace("jit_malloc_migrate(" DRJIT_PTR " -> " DRJIT_PTR ", %s -> %s)",
               (uintptr_t) ptr, (uintptr_t) ptr_new,
               alloc_type_name[(int) src_type],
@@ -330,7 +326,7 @@ void* jitc_malloc_migrate(void *ptr, AllocType dst_type, int move) {
     scoped_set_context guard(ts->context);
     if (src_type == AllocType::Host) {
         // Host -> Device memory, create an intermediate host-pinned array
-        void *tmp = jitc_malloc(AllocType::HostPinned, size);
+        void *tmp = jitc_malloc(backend, AllocType::HostPinned, size);
         memcpy(tmp, ptr, size);
         cuda_check(cuMemcpyAsync((CUdeviceptr) ptr_new,
                                  (CUdeviceptr) ptr, size,

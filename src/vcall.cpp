@@ -240,10 +240,10 @@ uint32_t jitc_var_vcall(const char *name, uint32_t self, uint32_t mask_,
     // Allocate memory + wrapper variables for call offset and data arrays
     vcall->offset_size = (inst_id_max + 1) * sizeof(uint64_t);
 
-    AllocType at =
-        backend == JitBackend::CUDA ? AllocType::Device : AllocType::HostAsync;
-    vcall->offset = (uint64_t *) jitc_malloc(at, vcall->offset_size);
-    uint8_t *data_d = (uint8_t *) jitc_malloc(at, data_size);
+    AllocType at = jit_is_device_backend(backend) ? AllocType::Device
+                                                  : AllocType::HostAsync;
+    vcall->offset = (uint64_t *) jitc_malloc(backend, at, vcall->offset_size);
+    uint8_t *data_d = (uint8_t *) jitc_malloc(backend, at, data_size);
 
     Ref data_buf, data_v,
         offset_buf = steal(jitc_var_mem_map(
@@ -263,10 +263,11 @@ uint32_t jitc_var_vcall(const char *name, uint32_t self, uint32_t mask_,
 
         data_v = steal(jitc_var_pointer(backend, data_d, data_buf, 0));
 
-        VCallDataRecord *rec = (VCallDataRecord *)
-            jitc_malloc(backend == JitBackend::CUDA ? AllocType::HostPinned
-                                                    : AllocType::Host,
-                        sizeof(VCallDataRecord) * vcall->data_map.size());
+        VCallDataRecord *rec = (VCallDataRecord *)jitc_malloc(
+            backend,
+            jit_is_device_backend(backend) ? AllocType::HostPinned
+                                           : AllocType::Host,
+            sizeof(VCallDataRecord) * vcall->data_map.size());
 
         VCallDataRecord *p = rec;
 
@@ -762,7 +763,7 @@ void jitc_vcall_upload(ThreadState *ts) {
                                                    : AllocType::Host;
 
     for (VCall *vcall : vcalls_assembled) {
-        uint64_t *data = (uint64_t *) jitc_malloc(at, vcall->offset_size);
+        uint64_t *data = (uint64_t *) jitc_malloc(ts->backend, at, vcall->offset_size);
         memset(data, 0, vcall->offset_size);
 
         for (uint32_t i = 0; i < vcall->n_inst; ++i) {
@@ -835,10 +836,16 @@ VCallBucket *jitc_var_vcall_reduce(JitBackend backend, const char *domain,
     if (backend == JitBackend::LLVM)
         perm_size += jitc_llvm_vector_width * sizeof(uint32_t);
 
-    uint8_t *offsets = (uint8_t *) jitc_malloc(
-        backend == JitBackend::CUDA ? AllocType::HostPinned : AllocType::Host, offsets_size);
-    uint32_t *perm = (uint32_t *) jitc_malloc(
-        backend == JitBackend::CUDA ? AllocType::Device : AllocType::HostAsync, perm_size);
+    uint8_t *offsets = (uint8_t *)jitc_malloc(
+            backend,
+            jit_is_device_backend(backend) ? AllocType::HostPinned
+                                           : AllocType::Host,
+            offsets_size);
+    uint32_t *perm = (uint32_t *)jitc_malloc(
+            backend,
+            jit_is_device_backend(backend) ? AllocType::Device
+                                           : AllocType::HostAsync,
+            perm_size);
 
     // Compute permutation
     const uint32_t *self = (const uint32_t *) jitc_var_ptr(index);

@@ -341,9 +341,9 @@ void jit_flush_kernel_cache() {
     jitc_flush_kernel_cache();
 }
 
-void *jit_malloc(AllocType type, size_t size) {
+void *jit_malloc(JitBackend backend, AllocType type, size_t size) {
     lock_guard guard(state.lock);
-    return jitc_malloc(type, size);
+    return jitc_malloc(backend, type, size);
 }
 
 void jit_free(void *ptr) {
@@ -371,9 +371,10 @@ int jit_malloc_device(void *ptr) {
     return jitc_malloc_device(ptr);
 }
 
-void *jit_malloc_migrate(void *ptr, AllocType type, int move) {
+void *jit_malloc_migrate(void *ptr, JitBackend backend, AllocType type,
+                         int move) {
     lock_guard guard(state.lock);
-    return jitc_malloc_migrate(ptr, type, move);
+    return jitc_malloc_migrate(ptr, backend, type, move);
 }
 
 enum AllocType jit_var_alloc_type(uint32_t index) {

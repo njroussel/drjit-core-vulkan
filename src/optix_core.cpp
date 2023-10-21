@@ -116,9 +116,9 @@ OptixDeviceContext jitc_optix_context() {
         jitc_optix_check(optixProgramGroupCreate(ctx, &pgd, 1, &pgo, log, &log_size, &pg));
 
         OptixShaderBindingTable sbt {};
-        sbt.missRecordBase = jitc_malloc(AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
+        sbt.missRecordBase = jitc_malloc(JitBackend::CUDA, AllocType::HostPinned, OPTIX_SBT_RECORD_HEADER_SIZE);
         jitc_optix_check(optixSbtRecordPackHeader(pg, sbt.missRecordBase));
-        sbt.missRecordBase = jitc_malloc_migrate(sbt.missRecordBase, AllocType::Device, 1);
+        sbt.missRecordBase = jitc_malloc_migrate(sbt.missRecordBase, JitBackend::CUDA, AllocType::Device, 1);
         sbt.missRecordStrideInBytes = OPTIX_SBT_RECORD_HEADER_SIZE;
         sbt.missRecordCount = 1;
 
@@ -343,14 +343,14 @@ bool jitc_optix_compile(ThreadState *ts, const char *buf, size_t buf_size,
 
     const size_t stride = OPTIX_SBT_RECORD_HEADER_SIZE;
     uint8_t *sbt_record = (uint8_t *)
-        jitc_malloc(AllocType::HostPinned, n_programs * stride);
+        jitc_malloc(JitBackend::CUDA, AllocType::HostPinned, n_programs * stride);
 
     for (size_t i = 0; i < n_programs; ++i)
         jitc_optix_check(optixSbtRecordPackHeader(
             kernel.optix.pg[i], sbt_record + stride * i));
 
     kernel.optix.sbt_record = (uint8_t *)
-        jitc_malloc_migrate(sbt_record, AllocType::Device, 1);
+        jitc_malloc_migrate(sbt_record, JitBackend::CUDA, AllocType::Device, 1);
 
     // =====================================================
     // 4. Create an OptiX pipeline

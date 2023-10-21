@@ -344,7 +344,7 @@ void jitc_reduce(JitBackend backend, VarType type, ReduceOp rtype, const void *p
             jitc_submit_gpu(KernelType::Reduce, func, 1, thread_count,
                             shared_size, ts->stream, args, nullptr, size);
         } else {
-            void *temp = jitc_malloc(AllocType::Device, size_t(block_count) * tsize);
+            void *temp = jitc_malloc(backend, AllocType::Device, size_t(block_count) * tsize);
 
             // First reduction
             void *args_1[] = { &ptr, &size, &temp };
@@ -369,7 +369,7 @@ void jitc_reduce(JitBackend backend, VarType type, ReduceOp rtype, const void *p
 
         void *target = out;
         if (blocks > 1)
-            target = jitc_malloc(AllocType::HostAsync, blocks * tsize);
+            target = jitc_malloc(backend, AllocType::HostAsync, blocks * tsize);
 
         Reduction reduction = jitc_reduce_create(type, rtype);
         jitc_submit_cpu(
@@ -409,7 +409,7 @@ bool jitc_all(JitBackend backend, uint8_t *values, uint32_t size) {
 
     bool result;
     if (backend == JitBackend::CUDA) {
-        uint8_t *out = (uint8_t *) jitc_malloc(AllocType::HostPinned, 4);
+        uint8_t *out = (uint8_t *) jitc_malloc(backend, AllocType::HostPinned, 4);
         jitc_reduce(backend, VarType::UInt32, ReduceOp::And, values, reduced_size, out);
         jitc_sync_thread();
         result = (out[0] & out[1] & out[2] & out[3]) != 0;
@@ -443,7 +443,7 @@ bool jitc_any(JitBackend backend, uint8_t *values, uint32_t size) {
 
     bool result;
     if (backend == JitBackend::CUDA) {
-        uint8_t *out = (uint8_t *) jitc_malloc(AllocType::HostPinned, 4);
+        uint8_t *out = (uint8_t *) jitc_malloc(backend, AllocType::HostPinned, 4);
         jitc_reduce(backend, VarType::UInt32, ReduceOp::Or, values, reduced_size, out);
         jitc_sync_thread();
         result = (out[0] | out[1] | out[2] | out[3]) != 0;
@@ -589,7 +589,7 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
                 jitc_raise("jit_prefix_sum(): type %s is not supported!", type_name[(int) vt]);
 
             uint64_t *scratch = (uint64_t *) jitc_malloc(
-                AllocType::Device, scratch_items * sizeof(uint64_t));
+                backend, AllocType::Device, scratch_items * sizeof(uint64_t));
 
             /// Initialize scratch space and padding
             uint32_t block_count_init, thread_count_init;
@@ -626,7 +626,7 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
         void *scratch = nullptr;
 
         if (blocks > 1) {
-            scratch = (void *) jitc_malloc(AllocType::HostAsync, blocks * isize);
+            scratch = (void *) jitc_malloc(backend, AllocType::HostAsync, blocks * isize);
 
             jitc_submit_cpu(
                 KernelType::Other,
@@ -668,7 +668,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
         scoped_set_context guard(ts->context);
 
         uint32_t *count_out = (uint32_t *) jitc_malloc(
-            AllocType::HostPinned, sizeof(uint32_t));
+            backend, AllocType::HostPinned, sizeof(uint32_t));
 
         if (size <= 4096) {
             // Kernel for small arrays
@@ -709,8 +709,8 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
                     (uintptr_t) in, (uintptr_t) out, size, block_count,
                     thread_count, shared_size, scratch_items * 4);
 
-            uint64_t *scratch = (uint64_t *) jitc_malloc(
-                AllocType::Device, scratch_items * sizeof(uint64_t));
+            uint64_t *scratch = (uint64_t *)jitc_malloc(
+                backend, AllocType::Device, scratch_items * sizeof(uint64_t));
 
             // Initialize scratch space and padding
             uint32_t block_count_init, thread_count_init;
@@ -758,7 +758,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
         uint32_t *scratch = nullptr;
 
         if (blocks > 1) {
-            scratch = (uint32_t *) jitc_malloc(AllocType::HostAsync,
+            scratch = (uint32_t *) jitc_malloc(backend, AllocType::HostAsync,
                                                blocks * sizeof(uint32_t));
 
             jitc_submit_cpu(
@@ -907,14 +907,14 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         bool needs_transpose = bucket_size_1 != bucket_size_all;
         uint32_t *buckets_1, *buckets_2, *counter = nullptr;
         buckets_1 = buckets_2 =
-            (uint32_t *) jitc_malloc(AllocType::Device, bucket_size_all);
+            (uint32_t *) jitc_malloc(backend, AllocType::Device, bucket_size_all);
 
         // Scratch space for matrix transpose operation
         if (needs_transpose)
-            buckets_2 = (uint32_t *) jitc_malloc(AllocType::Device, bucket_size_all);
+            buckets_2 = (uint32_t *) jitc_malloc(backend, AllocType::Device, bucket_size_all);
 
         if (offsets) {
-            counter = (uint32_t *) jitc_malloc(AllocType::Device, sizeof(uint32_t)),
+            counter = (uint32_t *) jitc_malloc(backend, AllocType::Device, sizeof(uint32_t)),
             cuda_check(cuMemsetD8Async((CUdeviceptr) counter, 0, sizeof(uint32_t),
                                        ts->stream));
         }
@@ -1020,7 +1020,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
                 (uintptr_t) ptr, size, bucket_count, block_size, blocks);
 
         uint32_t **buckets =
-            (uint32_t **) jitc_malloc(AllocType::HostAsync, sizeof(uint32_t *) * blocks);
+            (uint32_t **) jitc_malloc(backend, AllocType::HostAsync, sizeof(uint32_t *) * blocks);
 
         uint32_t unique_count = 0;
 

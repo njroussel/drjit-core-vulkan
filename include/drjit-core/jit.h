@@ -402,8 +402,9 @@ enum AllocType {
  * of use.
  *
  */
-extern JIT_EXPORT void *jit_malloc(JIT_ENUM AllocType type, size_t size)
-    JIT_MALLOC;
+extern JIT_EXPORT void *jit_malloc(JIT_ENUM JitBackend backend,
+                                   JIT_ENUM AllocType type,
+                                   size_t size) JIT_MALLOC;
 
 /**
  * \brief Release a given pointer asynchronously
@@ -470,7 +471,9 @@ extern JIT_EXPORT int jit_malloc_device(void *ptr);
  * jit_set_device()) does not match the device associated with the allocation,
  * a peer-to-peer migration is performed.
  */
-extern JIT_EXPORT void *jit_malloc_migrate(void *ptr, JIT_ENUM AllocType type,
+extern JIT_EXPORT void *jit_malloc_migrate(void *ptr,
+                                           JIT_ENUM JitBackend backend,
+                                           JIT_ENUM AllocType type,
                                            int move JIT_DEF(1));
 
 // ====================================================================
