@@ -868,17 +868,26 @@ enum ParamType { Register, Input, Output };
 #if defined(_MSC_VER)
   extern __declspec(thread) ThreadState* thread_state_llvm;
   extern __declspec(thread) ThreadState* thread_state_cuda;
+  extern __declspec(thread) ThreadState* thread_state_vulkan;
   extern __declspec(thread) JitBackend default_backend;
 #else
   extern __thread ThreadState* thread_state_llvm;
   extern __thread ThreadState* thread_state_cuda;
+  extern __thread ThreadState* thread_state_vulkan;
   extern __thread JitBackend default_backend;
 #endif
 
 extern ThreadState *jitc_init_thread_state(JitBackend backend);
 
 inline ThreadState *thread_state(JitBackend backend) {
-    ThreadState *result = (backend == JitBackend::CUDA) ? thread_state_cuda : thread_state_llvm;
+    ThreadState *result;
+    if (backend == JitBackend::LLVM)
+        result = thread_state_llvm;
+    else if (backend == JitBackend::CUDA)
+        result = thread_state_cuda;
+    else
+        result = thread_state_vulkan;
+
     if (unlikely(!result))
         result = jitc_init_thread_state(backend);
     return result;

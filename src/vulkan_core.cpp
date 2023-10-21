@@ -3,9 +3,9 @@
 #include <cstring>
 #include <vector>
 
-static VkInstance jitc_vulkan_instance = nullptr;
-static VkDevice jitc_vulkan_device = nullptr;
-static VkQueue jitc_vulkan_queue = nullptr;
+VkInstance jitc_vulkan_instance = nullptr;
+VkDevice jitc_vulkan_device = nullptr;
+VkQueue jitc_vulkan_queue = nullptr;
 
 /// Find validation layers
 static void jitc_add_validation_layer(std::vector<std::string> &layers) {

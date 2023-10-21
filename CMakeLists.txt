@@ -152,6 +152,8 @@ add_library(
   src/vulkan_api.h
   src/vulkan_api.cpp
   src/vulkan_core.cpp
+  src/vulkan_ts.h
+  src/vulkan_ts.cpp
 
   src/io.h       src/io.cpp
   src/eval.h     src/eval.cpp
