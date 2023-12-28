@@ -509,6 +509,11 @@ struct ThreadState {
     OptixPipelineData *optix_pipeline = nullptr;
     OptixShaderBindingTable *optix_sbt = nullptr;
 #endif
+
+    /// ---------------------------- Vulkan -specific -------------------------
+
+    VkDevice vulkan_device = nullptr;
+    VkQueue vulkan_queue = nullptr;
 };
 
 /// Maps from variable ID to a Variable instance

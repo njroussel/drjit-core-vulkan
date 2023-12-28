@@ -9,12 +9,25 @@
 
 #pragma once
 
+#include "hash.h"
+#include "tsl/robin_map.h"
 #include "vulkan_api.h"
+
+struct VkDeviceMemoryHasher {
+    size_t operator()(VkDeviceMemory ptr) const {
+        return (size_t) hasher((uint64_t) ptr);
+    }
+
+    UInt64Hasher hasher;
+};
+
+using VkBufferMemMap = tsl::robin_map<VkDeviceMemory, VkBuffer, VkDeviceMemoryHasher>;
 
 extern VkInstance jitc_vulkan_instance;
 extern VkDevice jitc_vulkan_device;
 extern VkQueue jitc_vulkan_queue;
-
+extern uint32_t jitc_vulkan_mem_type_idx;
+extern VkBufferMemMap jitc_vulkan_buffer_mem_map;
 
 /// Try to load Vulkan
 extern bool jitc_vulkan_init();

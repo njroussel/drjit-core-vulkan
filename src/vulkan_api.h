@@ -29,7 +29,8 @@ extern void *jitc_vulkan_lookup(const char *name);
 # define VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO      1
 # define VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO  2
 # define VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO        3
-
+# define VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO      5
+# define VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO       12
 
 # define VK_MAX_EXTENSION_NAME_SIZE 256U
 # define VK_MAX_DESCRIPTION_SIZE    256U
@@ -37,14 +38,28 @@ extern void *jitc_vulkan_lookup(const char *name);
 # define VK_QUEUE_GRAPHICS_BIT   0x00000001
 # define VK_QUEUE_COMPUTE_BIT    0x00000002
 
+# define VK_BUFFER_USAGE_TRANSFER_SRC_BIT   0x00000001
+# define VK_BUFFER_USAGE_TRANSFER_DST_BIT   0x00000002
+# define VK_BUFFER_USAGE_STORAGE_BUFFER_BIT 0x00000020
+
+# define VK_SHARING_MODE_EXCLUSIVE 0
+
+#define VK_MAX_MEMORY_TYPES 32U
+#define VK_MAX_MEMORY_HEAPS 16U
+
+#define VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  0x00000002
+#define VK_MEMORY_PROPERTY_HOST_COHERENT_BIT 0x00000004
 
 # define VK_SUCCESS 0
 
-using VkResult   = int;
+using VkResult = int;
 using VkInstance = struct VkInstance_st *;
 using VkPhysicalDevice = struct VkPhysicalDevice_st *;
 using VkDevice = struct VkDevice_st *;
 using VkQueue = struct VkQueue_st *;
+using VkBuffer = struct VkBuffer_st *;
+using VkDeviceSize = uint64_t;
+using VkDeviceMemory = struct VkDeviceMemory_st *;
 
 using PFN_vkAllocationFunction =
     void *(*)(void *, uintptr_t, unsigned, unsigned, const char *);
@@ -187,6 +202,48 @@ struct VkDeviceCreateInfo {
     const VkPhysicalDeviceFeatures*    pEnabledFeatures;
 };
 
+struct VkBufferCreateInfo {
+    int               sType;
+    const void*       pNext;
+    uint32_t          flags;
+    uint64_t          size;
+    uint32_t          usage;
+    int               sharingMode;
+    uint32_t          queueFamilyIndexCount;
+    const uint32_t*   pQueueFamilyIndices;
+};
+
+typedef struct VkMemoryType {
+    uint32_t propertyFlags;
+    uint32_t heapIndex;
+} VkMemoryType;
+
+typedef struct VkMemoryHeap {
+    VkDeviceSize  size;
+    uint32_t      flags;
+} VkMemoryHeap;
+
+
+struct VkPhysicalDeviceMemoryProperties {
+    uint32_t        memoryTypeCount;
+    VkMemoryType    memoryTypes[VK_MAX_MEMORY_TYPES];
+    uint32_t        memoryHeapCount;
+    VkMemoryHeap    memoryHeaps[VK_MAX_MEMORY_HEAPS];
+};
+
+struct VkPhysicalDeviceMemoryProperties2 {
+    int                                 sType;
+    void*                               pNext;
+    VkPhysicalDeviceMemoryProperties    memoryProperties;
+};
+
+struct VkMemoryAllocateInfo {
+    int           sType;
+    const void*   pNext;
+    VkDeviceSize  allocationSize;
+    uint32_t      memoryTypeIndex;
+} ;
+
 
 #if !defined(DR_VULKAN_SYM)
 #  define DR_VULKAN_SYM(x) extern x;
@@ -208,9 +265,27 @@ DR_VULKAN_SYM(VkResult (*vkCreateDevice)(VkPhysicalDevice,
                                          const VkAllocationCallbacks *,
                                          VkDevice *));
 DR_VULKAN_SYM(void (*vkDestroyDevice)(VkDevice, const VkAllocationCallbacks *));
-
 DR_VULKAN_SYM(void (*vkGetDeviceQueue)(VkDevice, uint32_t, uint32_t,
                                        VkQueue *));
+DR_VULKAN_SYM(VkResult (*vkCreateBuffer)(VkDevice, const VkBufferCreateInfo *,
+                                         const VkAllocationCallbacks *,
+                                         VkBuffer *));
+DR_VULKAN_SYM(void (*vkDestroyBuffer)(VkDevice,
+                                      VkBuffer,
+                                      const VkAllocationCallbacks*));
+DR_VULKAN_SYM(void (*vkGetPhysicalDeviceMemoryProperties)(VkPhysicalDevice,
+                                                          VkPhysicalDeviceMemoryProperties*));
+DR_VULKAN_SYM(VkResult (*vkAllocateMemory)(VkDevice,
+                                           const VkMemoryAllocateInfo*,
+                                           const VkAllocationCallbacks*,
+                                           VkDeviceMemory*));
+DR_VULKAN_SYM(VkResult (*vkBindBufferMemory)(VkDevice,
+                                             VkBuffer,
+                                             VkDeviceMemory,
+                                             VkDeviceSize));
+DR_VULKAN_SYM(void (*vkFreeMemory)(VkDevice,
+                                   VkDeviceMemory,
+                                   const VkAllocationCallbacks *));
 
 #if defined(DR_VULKAN_SYM)
 #  undef DR_VULKAN_SYM

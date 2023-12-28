@@ -69,6 +69,12 @@ bool jitc_vulkan_api_init() {
         LOAD(vkCreateDevice);
         LOAD(vkDestroyDevice);
         LOAD(vkGetDeviceQueue);
+        LOAD(vkCreateBuffer);
+        LOAD(vkDestroyBuffer);
+        LOAD(vkGetPhysicalDeviceMemoryProperties);
+        LOAD(vkAllocateMemory);
+        LOAD(vkBindBufferMemory);
+        LOAD(vkFreeMemory);
 
         #undef LOAD
     } while (false);
@@ -97,6 +103,12 @@ void jitc_vulkan_api_shutdown() {
     Z(vkCreateDevice);
     Z(vkDestroyDevice);
     Z(vkGetDeviceQueue);
+    Z(vkCreateBuffer);
+    Z(vkDestroyBuffer);
+    Z(vkGetPhysicalDeviceMemoryProperties);
+    Z(vkAllocateMemory);
+    Z(vkBindBufferMemory);
+    Z(vkFreeMemory);
     #undef Z
 
 #if !defined(_WIN32)
