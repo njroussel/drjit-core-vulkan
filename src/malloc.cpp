@@ -155,24 +155,61 @@ void* jitc_malloc(JitBackend backend, AllocType type, size_t size) {
             {
                 unlock_guard guard(state.lock);
                 /* Temporarily release the main lock */ {
-                    if (backend != JitBackend::CUDA) {
-                        ptr = aligned_malloc(size);
-                    } else {
-                        scoped_set_context guard_2(ts->context);
-                        CUresult ret;
+                    switch (backend) {
+                        case JitBackend::LLVM:
+                            ptr = aligned_malloc(size);
+                            break;
+                        case JitBackend::CUDA: {
+                            scoped_set_context guard_2(ts->context);
+                            CUresult ret;
 
-                        if (type == AllocType::HostPinned)
-                            ret = cuMemAllocHost(&ptr, size);
-                        else if (ts->memory_pool)
-                            ret = cuMemAllocAsync((CUdeviceptr*) &ptr, size, ts->stream);
-                        else
-                            ret = cuMemAlloc((CUdeviceptr*) &ptr, size);
+                            if (type == AllocType::HostPinned)
+                                ret = cuMemAllocHost(&ptr, size);
+                            else if (ts->memory_pool)
+                                ret = cuMemAllocAsync((CUdeviceptr*) &ptr, size, ts->stream);
+                            else
+                                ret = cuMemAlloc((CUdeviceptr*) &ptr, size);
 
-                        if (ret)
-                            ptr = nullptr;
+                            if (ret)
+                                ptr = nullptr;
+                            break;
+                        }
+                        case JitBackend::Vulkan: {
+                            VkBufferCreateInfo bufferInfo{};
+                            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+                            bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                            bufferInfo.size = size;
+                            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+                            VkBuffer buffer;
+                            vulkan_check(vkCreateBuffer(
+                                jitc_vulkan_device, &bufferInfo, nullptr, &buffer));
+
+                            VkMemoryAllocateInfo allocInfo{};
+                            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                            allocInfo.allocationSize = size;
+                            allocInfo.memoryTypeIndex = jitc_vulkan_mem_type_idx;
+
+                            VkDeviceMemory memory;
+                            vulkan_check(vkAllocateMemory(
+                                jitc_vulkan_device, &allocInfo, nullptr, &memory));
+
+                            vulkan_check(vkBindBufferMemory(jitc_vulkan_device,
+                                                            buffer, memory, 0));
+                            jitc_vulkan_buffer_mem_map.insert({memory, buffer});
+
+                            ptr = memory;
+                            break;
+                        }
+                        default:
+                            jitc_raise("jit_malloc(): unknown JIT backend!");
+                            break;
                     }
                 }
             }
+
             if (ptr)
                 break;
             if (i == 0) // free memory, then retry
@@ -397,7 +434,7 @@ void jitc_flush_malloc_cache(bool warn) {
         unlock_guard guard(state.lock);
 
         for (auto& kv : alloc_free) {
-            auto [size, type, bakend, device] = alloc_info_decode(kv.first);
+            auto [size, type, backend, device] = alloc_info_decode(kv.first);
             const std::vector<void *> &entries = kv.second;
 
             trim_count[(int) type] += entries.size();
@@ -405,7 +442,7 @@ void jitc_flush_malloc_cache(bool warn) {
 
             switch ((AllocType) type) {
                 case AllocType::Device:
-                    if (state.backends & (uint32_t) JitBackend::CUDA) {
+                    if (backend == JitBackend::CUDA) {
                         const Device &dev = state.devices[device];
                         scoped_set_context guard2(dev.context);
                         if (dev.memory_pool) {
@@ -414,6 +451,18 @@ void jitc_flush_malloc_cache(bool warn) {
                         } else {
                             for (void *ptr : entries)
                                 cuda_check(cuMemFree((CUdeviceptr) ptr));
+                        }
+                    } else if (backend == JitBackend::Vulkan) {
+                        for (void *ptr : entries) {
+                            VkDeviceMemory memory = (VkDeviceMemory) ptr;
+                            vkFreeMemory(jitc_vulkan_device, memory, nullptr);
+
+                            // Delete buffer too
+                            VkBuffer buffer =
+                                jitc_vulkan_buffer_mem_map.at(memory);
+                            vkDestroyBuffer(jitc_vulkan_device, buffer,
+                                            nullptr);
+                            jitc_vulkan_buffer_mem_map.erase(memory);
                         }
                     }
                     break;

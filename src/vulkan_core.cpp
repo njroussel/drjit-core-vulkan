@@ -1,11 +1,15 @@
-#include "vulkan.h"
+#include "hash.h"
+#include "tsl/robin_map.h"
 #include "log.h"
+#include "vulkan.h"
 #include <cstring>
 #include <vector>
 
 VkInstance jitc_vulkan_instance = nullptr;
 VkDevice jitc_vulkan_device = nullptr;
 VkQueue jitc_vulkan_queue = nullptr;
+uint32_t jitc_vulkan_mem_type_idx = -1;
+VkBufferMemMap jitc_vulkan_buffer_mem_map;
 
 /// Find validation layers
 static void jitc_add_validation_layer(std::vector<std::string> &layers) {
@@ -145,6 +149,34 @@ bool jitc_vulkan_init() {
     vulkan_check(vkCreateDevice(physical_device, &device_create_info, nullptr,
                                 &jitc_vulkan_device));
     vkGetDeviceQueue(jitc_vulkan_device, queue_index, 0, &jitc_vulkan_queue);
+
+    ///
+    /// Find memory type index
+    ///
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memProperties);
+
+    uint32_t necessary_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    auto has_all_flags = [](uint32_t input, uint32_t flags) {
+      return (input & flags) == flags;
+    };
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if (has_all_flags(memProperties.memoryTypes[i].propertyFlags,
+                          necessary_flags)) {
+            jitc_vulkan_mem_type_idx = memProperties.memoryTypes[i].heapIndex;
+            break;
+        }
+    }
+
+    if (jitc_vulkan_mem_type_idx == (uint32_t) -1) {
+        jitc_log(LogLevel::Warn,
+                 "jit_vulkan_init(): Could not find a suitable memory type on "
+                 "discrete GPU -- disabling Vulkan backend!");
+        return false;
+    }
 
     return true;
 }

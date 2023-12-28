@@ -645,6 +645,12 @@ struct ThreadState {
     OptixShaderBindingTable *optix_sbt = nullptr;
 #endif
 
+    /// ---------------------------- Vulkan-specific --------------------------
+
+    VkDevice vulkan_device = nullptr;
+    VkQueue vulkan_queue = nullptr;
+
+    /// -------------------------------- Methods ------------------------------
 
     virtual ~ThreadState(){}
     ThreadState() = default;
