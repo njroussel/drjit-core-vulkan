@@ -190,7 +190,7 @@ struct Variable {
     uint32_t kind : 8;
 
     /// Backend associated with this variable
-    uint32_t backend : 2;
+    uint32_t backend : 3;
 
     /// Variable type (Bool/Int/Float/....)
     uint32_t type : 4;
@@ -233,7 +233,7 @@ struct Variable {
     uint32_t output_flag : 1;
 
     /// Unused for now
-    uint32_t unused_2 : 6;
+    uint32_t unused_2 : 5;
 
     /// Offset of the argument in the list of kernel parameters
     uint32_t param_offset;

@@ -75,6 +75,19 @@ bool jitc_vulkan_api_init() {
         LOAD(vkAllocateMemory);
         LOAD(vkBindBufferMemory);
         LOAD(vkFreeMemory);
+        LOAD(vkMapMemory);
+        LOAD(vkUnmapMemory);
+        LOAD(vkCreateCommandPool);
+        LOAD(vkDestroyCommandPool);
+        LOAD(vkAllocateCommandBuffers);
+        LOAD(vkFreeCommandBuffers);
+        LOAD(vkBeginCommandBuffer);
+        LOAD(vkEndCommandBuffer);
+        LOAD(vkQueueSubmit);
+        LOAD(vkCmdCopyBuffer);
+        LOAD(vkCreateFence);
+        LOAD(vkDestroyFence);
+        LOAD(vkWaitForFences);
 
         #undef LOAD
     } while (false);
@@ -109,6 +122,19 @@ void jitc_vulkan_api_shutdown() {
     Z(vkAllocateMemory);
     Z(vkBindBufferMemory);
     Z(vkFreeMemory);
+    Z(vkMapMemory);
+    Z(vkUnmapMemory);
+    Z(vkCreateCommandPool);
+    Z(vkDestroyCommandPool);
+    Z(vkAllocateCommandBuffers);
+    Z(vkFreeCommandBuffers);
+    Z(vkBeginCommandBuffer);
+    Z(vkEndCommandBuffer);
+    Z(vkQueueSubmit);
+    Z(vkCmdCopyBuffer);
+    Z(vkCreateFence);
+    Z(vkDestroyFence);
+    Z(vkWaitForFences);
     #undef Z
 
 #if !defined(_WIN32)

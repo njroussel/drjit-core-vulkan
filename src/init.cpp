@@ -265,6 +265,7 @@ void jitc_shutdown(int light) {
 
     thread_state_llvm = nullptr;
     thread_state_cuda = nullptr;
+    thread_state_vulkan = nullptr;
 
     if (std::max(state.log_level_stderr, state.log_level_callback) >= LogLevel::Warn) {
         uint32_t n_leaked = 0;

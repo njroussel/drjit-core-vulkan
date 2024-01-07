@@ -28,6 +28,8 @@ extern VkDevice jitc_vulkan_device;
 extern VkQueue jitc_vulkan_queue;
 extern uint32_t jitc_vulkan_mem_type_idx;
 extern VkBufferMemMap jitc_vulkan_buffer_mem_map;
+extern VkBufferMemMap jitc_vulkan_buffer_mem_map;
+extern VkCommandPool jitc_vulkan_cmd_pool;
 
 /// Try to load Vulkan
 extern bool jitc_vulkan_init();

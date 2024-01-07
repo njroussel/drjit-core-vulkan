@@ -1172,46 +1172,159 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
     void *target_ptr;
 
     ThreadState *ts = thread_state(backend);
-    if (backend == JitBackend::CUDA) {
-        target_ptr = jitc_malloc(backend, AllocType::Device, total_size);
 
-        scoped_set_context guard(ts->context);
-        if (atype == AllocType::HostAsync) {
-            jitc_fail("jit_var_mem_copy(): copy from HostAsync to GPU memory not supported!");
-        } else if (atype == AllocType::Host) {
-            void *host_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
-            CUresult rv;
-            {
-                unlock_guard guard2(state.lock);
-                memcpy(host_ptr, ptr, total_size);
-                rv = cuMemcpyAsync((CUdeviceptr) target_ptr,
-                                   (CUdeviceptr) host_ptr, total_size,
-                                   ts->stream);
+    switch (backend) {
+        case JitBackend::CUDA: {
+            target_ptr = jitc_malloc(backend, AllocType::Device, total_size);
+
+            scoped_set_context guard(ts->context);
+            if (atype == AllocType::HostAsync) {
+                jitc_fail(
+                    "jit_var_mem_copy(): copy from HostAsync to GPU memory "
+                    "not supported!");
+            } else if (atype == AllocType::Host) {
+                void *host_ptr =
+                    jitc_malloc(backend, AllocType::HostPinned, total_size);
+                CUresult rv;
+                {
+                    unlock_guard guard2(state.lock);
+                    memcpy(host_ptr, ptr, total_size);
+                    rv = cuMemcpyAsync((CUdeviceptr) target_ptr,
+                                       (CUdeviceptr) host_ptr, total_size,
+                                       ts->stream);
+                }
+                cuda_check(rv);
+                jitc_free(host_ptr);
+            } else {
+                cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
+                                         (CUdeviceptr) ptr, total_size,
+                                         ts->stream));
             }
-            cuda_check(rv);
-            jitc_free(host_ptr);
-        } else {
-            cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
-                                     (CUdeviceptr) ptr, total_size,
-                                     ts->stream));
+
+            break;
         }
-    } else {
-        if (atype == AllocType::HostAsync) {
-            target_ptr = jitc_malloc(backend, AllocType::HostAsync, total_size);
-            jitc_memcpy_async(backend, target_ptr, ptr, total_size);
-        } else if (atype == AllocType::Host) {
-            target_ptr = jitc_malloc(backend, AllocType::Host, total_size);
-            {
-                unlock_guard guard(state.lock);
-                memcpy(target_ptr, ptr, total_size);
+        case JitBackend::Vulkan: {
+            target_ptr = jitc_malloc(backend, AllocType::Device, total_size);
+
+            if (atype == AllocType::HostAsync) {
+                jitc_fail(
+                    "jit_var_mem_copy(): copy from HostAsync to GPU memory "
+                    "not supported!");
+            } else if (atype == AllocType::Host) {
+                void *mm_target;
+                vulkan_check(vkMapMemory(jitc_vulkan_device,
+                                         (VkDeviceMemory) target_ptr, 0, size,
+                                         0, &mm_target));
+                {
+                    unlock_guard guard2(state.lock);
+                    memcpy(mm_target, ptr, size);
+                }
+                vkUnmapMemory(jitc_vulkan_device, (VkDeviceMemory) target_ptr);
+            } else {
+                /// Create command buffer
+                VkCommandBufferAllocateInfo alloc_info{};
+                alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+                alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+                alloc_info.commandPool = jitc_vulkan_cmd_pool;
+                alloc_info.commandBufferCount = 1;
+
+                VkCommandBuffer cmds;
+                vulkan_check(vkAllocateCommandBuffers(jitc_vulkan_device,
+                                                      &alloc_info, &cmds));
+
+                VkCommandBufferBeginInfo begin_info{};
+                begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+                /// Add memcpy to command buffer
+                vulkan_check(vkBeginCommandBuffer(cmds, &begin_info));
+
+                VkBufferCopy copy_info{};
+                copy_info.srcOffset = 0;
+                copy_info.dstOffset = 0;
+                copy_info.size      = size;
+
+                auto it = jitc_vulkan_buffer_mem_map.find((VkDeviceMemory) ptr);
+                if (it == jitc_vulkan_buffer_mem_map.end())
+                    jitc_fail("jit_var_mem_map(): device memory was not "
+                              "allocated by Dr.Jit or it has been flushed!");
+                VkBuffer src = it->second;
+                VkBuffer dst =
+                    jitc_vulkan_buffer_mem_map.at((VkDeviceMemory) target_ptr);
+                vkCmdCopyBuffer(cmds, src, dst, 1, &copy_info);
+
+                vulkan_check(vkEndCommandBuffer(cmds));
+
+                /// Submit command buffer
+                VkFenceCreateInfo fence_info{};
+                fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+                VkFence fence;
+                vulkan_check(vkCreateFence(jitc_vulkan_device, &fence_info,
+                                           nullptr, &fence));
+
+                VkSubmitInfo submitInfo{};
+                submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                submitInfo.commandBufferCount = 1;
+                submitInfo.pCommandBuffers = &cmds;
+                vulkan_check(vkQueueSubmit(jitc_vulkan_queue, 1, &submitInfo, fence));
+
+                using PayloadType = std::pair<VkFence, VkCommandBuffer>;
+                void *payload = new PayloadType({fence, cmds});
+
+                auto wait_and_free = [](uint32_t, void *payload_) {
+                    PayloadType *payload = (PayloadType *) payload_;
+
+                    VkFence fence;
+                    VkCommandBuffer cmds;
+                    std::tie(fence, cmds) = *payload;
+
+                    vulkan_check(vkWaitForFences(jitc_vulkan_device, 1, &fence,
+                                                 true, UINT64_MAX));
+                    vkFreeCommandBuffers(jitc_vulkan_device,
+                                         jitc_vulkan_cmd_pool, 1, &cmds);
+                    vkDestroyFence(jitc_vulkan_device, fence, nullptr);
+                };
+                auto payload_destructor = [](void *payload_) {
+                    PayloadType *payload = (PayloadType *) payload_;
+                    delete payload;
+                };
+
+                Task *submission = task_submit_dep(
+                    nullptr, &jitc_task, 1, 1, wait_and_free, payload,
+                    sizeof(PayloadType), payload_destructor, 1);
+                task_release(jitc_task);
+                jitc_task = submission;
+                task_wait(jitc_task);
             }
-            target_ptr = jitc_malloc_migrate(target_ptr, backend, AllocType::HostAsync, 1);
-        } else {
-            target_ptr = jitc_malloc(backend, AllocType::HostPinned, total_size);
-            cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
-                                     (CUdeviceptr) ptr, total_size,
-                                     ts->stream));
+
+            break;
         }
+        case JitBackend::LLVM: {
+            if (atype == AllocType::HostAsync) {
+                target_ptr =
+                    jitc_malloc(backend, AllocType::HostAsync, total_size);
+                jitc_memcpy_async(backend, target_ptr, ptr, total_size);
+            } else if (atype == AllocType::Host) {
+                target_ptr = jitc_malloc(backend, AllocType::Host, total_size);
+                {
+                    unlock_guard guard(state.lock);
+                    memcpy(target_ptr, ptr, total_size);
+                }
+                target_ptr = jitc_malloc_migrate(target_ptr, backend,
+                                                 AllocType::HostAsync, 1);
+            } else {
+                target_ptr =
+                    jitc_malloc(backend, AllocType::HostPinned, total_size);
+                cuda_check(cuMemcpyAsync((CUdeviceptr) target_ptr,
+                                         (CUdeviceptr) ptr, total_size,
+                                         ts->stream));
+            }
+
+            break;
+        }
+        default:
+            jitc_raise("jit_var_mem_copy(): unknown JIT backend!");
+            break;
     }
 
     uint32_t index = jitc_var_mem_map(backend, vtype, target_ptr, size, true);
@@ -1233,8 +1346,8 @@ uint32_t jitc_var_copy(uint32_t index) {
     uint32_t result;
     if (v->is_data()) {
         JitBackend backend = (JitBackend) v->backend;
-        AllocType atype = backend == JitBackend::CUDA ? AllocType::Device
-                                                      : AllocType::HostAsync;
+        AllocType atype = jit_is_device_backend(backend) ? AllocType::Device
+                                                         : AllocType::HostAsync;
         result = jitc_var_mem_copy(backend, atype, (VarType) v->type, v->data,
                                    v->size);
     } else {

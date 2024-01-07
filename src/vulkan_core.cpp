@@ -8,6 +8,7 @@ VkDevice jitc_vulkan_device = nullptr;
 VkQueue jitc_vulkan_queue = nullptr;
 uint32_t jitc_vulkan_mem_type_idx = -1;
 VkBufferMemMap jitc_vulkan_buffer_mem_map;
+VkCommandPool jitc_vulkan_cmd_pool = nullptr;
 
 /// Find validation layers
 static void jitc_add_validation_layer(std::vector<std::string> &layers) {
@@ -164,7 +165,7 @@ bool jitc_vulkan_init() {
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
         if (has_all_flags(memProperties.memoryTypes[i].propertyFlags,
                           necessary_flags)) {
-            jitc_vulkan_mem_type_idx = memProperties.memoryTypes[i].heapIndex;
+            jitc_vulkan_mem_type_idx = i;
             break;
         }
     }
@@ -176,6 +177,16 @@ bool jitc_vulkan_init() {
         return false;
     }
 
+    ///
+    /// Create command pool
+    ///
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = 0; // TODO allow resets?
+    pool_info.queueFamilyIndex = queue_index;
+    vulkan_check(vkCreateCommandPool(jitc_vulkan_device, &pool_info, nullptr,
+                                     &jitc_vulkan_cmd_pool));
+
     return true;
 }
 
@@ -184,6 +195,9 @@ void jitc_vulkan_shutdown(){
     jitc_log(Info, "jit_vulkan_shutdown()");
 
     #define Z(x) x = nullptr
+    vkDestroyCommandPool(jitc_vulkan_device, jitc_vulkan_cmd_pool, nullptr);
+    Z(jitc_vulkan_cmd_pool);
+
     vkDestroyDevice(jitc_vulkan_device, nullptr);
     Z(jitc_vulkan_device);
 
