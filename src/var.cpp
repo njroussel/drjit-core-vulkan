@@ -644,9 +644,22 @@ uint32_t jitc_var_wrap_vcall(uint32_t index) {
     }
 
     Variable v2;
-    v2.stmt = (char *) (((JitBackend) v->backend == JitBackend::CUDA)
-                            ? "mov.$t0 $r0, $r1"
-                            : "$r0 = bitcast <$w x $t0> $r1 to <$w x $t0>");
+    switch((JitBackend)v->backend) {
+        case JitBackend::CUDA:
+            v2.stmt = (char *) "mov.$t0 $r0, $r1";
+            break;
+        case JitBackend::Vulkan:
+            v2.stmt = (char *) "TODO: `jit_var_wrap_vcall`";
+            break;
+        case JitBackend::LLVM:
+            v2.stmt =
+                (char *) "$r0 = bitcast <$w x $t0> $r1 to <$w x $t0>";
+            break;
+        default:
+            jitc_raise("jit_var_copy(): unknown JIT backend!");
+            break;
+    }
+
     v2.backend = v->backend;
     v2.kind = (uint32_t) VarKind::Stmt;
     v2.type = v->type;
@@ -898,8 +911,8 @@ AllocType jitc_var_alloc_type(uint32_t index) {
     if (v->is_data())
         return jitc_malloc_type(v->data);
 
-    return (JitBackend) v->backend == JitBackend::CUDA ? AllocType::Device
-                                                       : AllocType::HostAsync;
+    return jit_is_device_backend((JitBackend) v->backend) ? AllocType::Device
+                                                          : AllocType::HostAsync;
 }
 
 /// Query the device associated with a variable
@@ -1362,9 +1375,22 @@ uint32_t jitc_var_copy(uint32_t index) {
             v2.literal = v->literal;
         } else {
             v2.kind = (uint32_t) VarKind::Stmt;
-            v2.stmt = (char *) (((JitBackend) v->backend == JitBackend::CUDA)
-                                ? "mov.$t0 $r0, $r1"
-                                : "$r0 = bitcast <$w x $t1> $r1 to <$w x $t0>");
+            switch((JitBackend)v->backend) {
+                case JitBackend::CUDA:
+                    v2.stmt = (char *) "mov.$t0 $r0, $r1";
+                    break;
+                case JitBackend::Vulkan:
+                    v2.stmt = (char *) "TODO: `jit_var_copy`";
+                    break;
+                case JitBackend::LLVM:
+                    v2.stmt =
+                        (char *) "$r0 = bitcast <$w x $t1> $r1 to <$w x $t0>";
+                    break;
+                default:
+                    jitc_raise("jit_var_copy(): unknown JIT backend!");
+                    break;
+            }
+
             v2.dep[0] = index;
             jitc_var_inc_ref(index, v);
         }
@@ -1417,9 +1443,23 @@ uint32_t jitc_var_resize(uint32_t index, size_t size) {
         v2.placeholder = v->placeholder;
         v2.size = (uint32_t) size;
         v2.dep[0] = index;
-        v2.stmt = (char *) (((JitBackend) v->backend == JitBackend::CUDA)
-                            ? "mov.$t0 $r0, $r1"
-                            : "$r0 = bitcast <$w x $t1> $r1 to <$w x $t0>");
+
+        switch((JitBackend)v->backend) {
+            case JitBackend::CUDA:
+                v2.stmt = (char *) "mov.$t0 $r0, $r1";
+                break;
+            case JitBackend::Vulkan:
+                v2.stmt = (char *) "TODO: `jit_var_resize`";
+                break;
+            case JitBackend::LLVM:
+                v2.stmt =
+                    (char *) "$r0 = bitcast <$w x $t1> $r1 to <$w x $t0>";
+                break;
+            default:
+                jitc_raise("jit_var_resize(): unknown JIT backend!");
+                break;
+        }
+
         jitc_var_inc_ref(index, v);
         result = jitc_var_new(v2, true);
     }
@@ -1431,6 +1471,8 @@ uint32_t jitc_var_resize(uint32_t index, size_t size) {
 
 /// Migrate a variable to a different flavor of memory
 uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
+    //FIXME: can't handle Vulkan, but I don't think we need migrations unless we
+    // want to export data for another framework which I'll look at later -- NJR
     if (src_index == 0)
         return 0;
 
@@ -1542,6 +1584,7 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
 }
 
 uint32_t jitc_var_mask_default(JitBackend backend, uint32_t size) {
+    //FIXME: can't handle Vulkan, revisit this once we're parsing SPIR-V
     if (backend == JitBackend::CUDA) {
         bool value = true;
         return jitc_var_literal(backend, VarType::Bool, &value, size, 0);
@@ -1752,9 +1795,27 @@ const char *jitc_var_whos() {
         const Variable *v = jitc_var(index);
         size_t mem_size = (size_t) v->size * (size_t) type_size[v->type];
 
-        var_buffer.fmt("  %-9u %s %-5s ", index,
-                       (JitBackend) v->backend == JitBackend::CUDA ? "cuda"
-                                                                   : "llvm",
+        char* cuda_str = (char*) "cuda";
+        char* llvm_str = (char*) "llvm";
+        char* vulkan_str = (char*) "vulkan";
+
+        char* backend_str;
+        switch((JitBackend)v->backend) {
+            case JitBackend::CUDA:
+                backend_str = cuda_str;
+                break;
+            case JitBackend::LLVM:
+                backend_str = llvm_str;
+                break;
+            case JitBackend::Vulkan:
+                backend_str = vulkan_str;
+                break;
+            default:
+                jitc_raise("jit_var_whos(): unknown JIT backend!");
+                break;
+        }
+
+        var_buffer.fmt("  %-9u %s %-5s ", index, backend_str,
                        type_name_short[v->type]);
 
         if (v->is_literal()) {
