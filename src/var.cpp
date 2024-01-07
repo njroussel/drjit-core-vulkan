@@ -1096,8 +1096,8 @@ AllocType jitc_var_alloc_type(uint32_t index) {
     if (v->is_evaluated())
         return jitc_malloc_type(v->data);
 
-    return (JitBackend) v->backend == JitBackend::CUDA ? AllocType::Device
-                                                       : AllocType::HostAsync;
+    return jit_is_device_backend((JitBackend) v->backend) ? AllocType::Device
+                                                          : AllocType::HostAsync;
 }
 
 /// Query the device associated with a variable
@@ -1806,6 +1806,8 @@ uint32_t jitc_var_resize(uint32_t index, size_t size) {
 
 /// Migrate a variable to a different flavor of memory
 uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
+    //FIXME: can't handle Vulkan, but I don't think we need migrations unless we
+    // want to export data for another framework which I'll look at later -- NJR
     if (src_index == 0)
         return 0;
 
@@ -1922,6 +1924,7 @@ uint32_t jitc_var_migrate(uint32_t src_index, AllocType dst_type) {
 }
 
 uint32_t jitc_var_mask_default(JitBackend backend, size_t size) {
+    //FIXME: can't handle Vulkan, revisit this once we're parsing SPIR-V
     jitc_check_size("jit_var_mask_default", size);
 
     if (backend == JitBackend::CUDA) {
@@ -2536,10 +2539,27 @@ const char *jitc_var_whos() {
             continue;
 
         size_t mem_size = (size_t) v.size * (size_t) type_size[v.type];
+        char* cuda_str = (char*) "cuda";
+        char* llvm_str = (char*) "llvm";
+        char* vulkan_str = (char*) "vulkan";
 
-        var_buffer.fmt("  %-8zu %s %-5s ", index,
-                       (JitBackend) v.backend == JitBackend::CUDA ? "cuda"
-                                                                  : "llvm",
+        char* backend_str;
+        switch((JitBackend) v.backend) {
+            case JitBackend::CUDA:
+                backend_str = cuda_str;
+                break;
+            case JitBackend::LLVM:
+                backend_str = llvm_str;
+                break;
+            case JitBackend::Vulkan:
+                backend_str = vulkan_str;
+                break;
+            default:
+                jitc_raise("jit_var_whos(): unknown JIT backend!");
+                break;
+        }
+
+        var_buffer.fmt("  %-8zu %s %-5s ", index, backend_str,
                        type_name_short[v.type]);
 
         if (v.is_literal()) {
