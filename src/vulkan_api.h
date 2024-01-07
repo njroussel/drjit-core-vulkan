@@ -25,12 +25,17 @@ extern void *jitc_vulkan_lookup(const char *name);
 #define VK_MAKE_API_VERSION(variant, major, minor, patch) \
     ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
 
-# define VK_STRUCTURE_TYPE_APPLICATION_INFO          0
-# define VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO      1
-# define VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO  2
-# define VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO        3
-# define VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO      5
-# define VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO       12
+# define VK_STRUCTURE_TYPE_APPLICATION_INFO              0
+# define VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO          1
+# define VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO      2
+# define VK_STRUCTURE_TYPE_SUBMIT_INFO                   4
+# define VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO            3
+# define VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO          5
+# define VK_STRUCTURE_TYPE_FENCE_CREATE_INFO             8
+# define VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO           12
+# define VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO     39
+# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO 40
+# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO    42
 
 # define VK_MAX_EXTENSION_NAME_SIZE 256U
 # define VK_MAX_DESCRIPTION_SIZE    256U
@@ -44,11 +49,15 @@ extern void *jitc_vulkan_lookup(const char *name);
 
 # define VK_SHARING_MODE_EXCLUSIVE 0
 
-#define VK_MAX_MEMORY_TYPES 32U
-#define VK_MAX_MEMORY_HEAPS 16U
+# define VK_MAX_MEMORY_TYPES 32U
+# define VK_MAX_MEMORY_HEAPS 16U
 
-#define VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  0x00000002
-#define VK_MEMORY_PROPERTY_HOST_COHERENT_BIT 0x00000004
+# define VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  0x00000002
+# define VK_MEMORY_PROPERTY_HOST_COHERENT_BIT 0x00000004
+
+# define VK_COMMAND_BUFFER_LEVEL_PRIMARY 0
+
+# define VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT 0x00000001
 
 # define VK_SUCCESS 0
 
@@ -60,6 +69,12 @@ using VkQueue = struct VkQueue_st *;
 using VkBuffer = struct VkBuffer_st *;
 using VkDeviceSize = uint64_t;
 using VkDeviceMemory = struct VkDeviceMemory_st *;
+using VkCommandPool = struct VkCommandPool_st *;
+using VkCommandBuffer = struct VkCommandBuffer_st *;
+using VkRenderPass = struct VkRenderPass_st *;
+using VkFramebuffer = struct VkFramebuffer_st *;
+using VkSemaphore = struct VkSemaphore_st *;
+using VkFence = struct VkFence_st *;
 
 using PFN_vkAllocationFunction =
     void *(*)(void *, uintptr_t, unsigned, unsigned, const char *);
@@ -218,11 +233,10 @@ typedef struct VkMemoryType {
     uint32_t heapIndex;
 } VkMemoryType;
 
-typedef struct VkMemoryHeap {
+struct VkMemoryHeap {
     VkDeviceSize  size;
     uint32_t      flags;
-} VkMemoryHeap;
-
+};
 
 struct VkPhysicalDeviceMemoryProperties {
     uint32_t        memoryTypeCount;
@@ -242,8 +256,64 @@ struct VkMemoryAllocateInfo {
     const void*   pNext;
     VkDeviceSize  allocationSize;
     uint32_t      memoryTypeIndex;
-} ;
+};
 
+struct VkCommandPoolCreateInfo {
+    int            sType;
+    const void*    pNext;
+    uint32_t       flags;
+    uint32_t       queueFamilyIndex;
+};
+
+struct VkCommandBufferAllocateInfo {
+    int             sType;
+    const void*     pNext;
+    VkCommandPool   commandPool;
+    uint32_t        level;
+    uint32_t        commandBufferCount;
+};
+
+struct VkCommandBufferInheritanceInfo {
+    int            sType;
+    const void*    pNext;
+    VkRenderPass   renderPass;
+    uint32_t       subpass;
+    VkFramebuffer  framebuffer;
+    uint32_t       occlusionQueryEnable;
+    uint32_t       queryFlags;
+    uint32_t       pipelineStatistics;
+};
+
+struct VkCommandBufferBeginInfo {
+    int sType;
+    const void*                              pNext;
+    uint32_t flags;
+    const VkCommandBufferInheritanceInfo*    pInheritanceInfo;
+};
+
+struct VkBufferCopy {
+    VkDeviceSize    srcOffset;
+    VkDeviceSize    dstOffset;
+    VkDeviceSize    size;
+};
+
+struct VkSubmitInfo {
+    int sType;
+    const void*                    pNext;
+    uint32_t                       waitSemaphoreCount;
+    const VkSemaphore*             pWaitSemaphores;
+    const uint32_t*                pWaitDstStageMask;
+    uint32_t                       commandBufferCount;
+    const VkCommandBuffer*         pCommandBuffers;
+    uint32_t                       signalSemaphoreCount;
+    const VkSemaphore*             pSignalSemaphores;
+};
+
+struct VkFenceCreateInfo {
+    int          sType;
+    const void*  pNext;
+    uint32_t     flags;
+};
 
 #if !defined(DR_VULKAN_SYM)
 #  define DR_VULKAN_SYM(x) extern x;
@@ -264,8 +334,11 @@ DR_VULKAN_SYM(VkResult (*vkCreateDevice)(VkPhysicalDevice,
                                          const VkDeviceCreateInfo *,
                                          const VkAllocationCallbacks *,
                                          VkDevice *));
-DR_VULKAN_SYM(void (*vkDestroyDevice)(VkDevice, const VkAllocationCallbacks *));
-DR_VULKAN_SYM(void (*vkGetDeviceQueue)(VkDevice, uint32_t, uint32_t,
+DR_VULKAN_SYM(void (*vkDestroyDevice)(VkDevice,
+                                      const VkAllocationCallbacks *));
+DR_VULKAN_SYM(void (*vkGetDeviceQueue)(VkDevice,
+                                       uint32_t,
+                                       uint32_t,
                                        VkQueue *));
 DR_VULKAN_SYM(VkResult (*vkCreateBuffer)(VkDevice, const VkBufferCreateInfo *,
                                          const VkAllocationCallbacks *,
@@ -286,6 +359,53 @@ DR_VULKAN_SYM(VkResult (*vkBindBufferMemory)(VkDevice,
 DR_VULKAN_SYM(void (*vkFreeMemory)(VkDevice,
                                    VkDeviceMemory,
                                    const VkAllocationCallbacks *));
+DR_VULKAN_SYM(VkResult (*vkMapMemory)(VkDevice,
+                                      VkDeviceMemory,
+                                      VkDeviceSize,
+                                      VkDeviceSize,
+                                      uint32_t,
+                                      void**));
+DR_VULKAN_SYM(void (*vkUnmapMemory)(VkDevice,
+                                    VkDeviceMemory));
+DR_VULKAN_SYM(VkResult (*vkCreateCommandPool)(VkDevice,
+                                              const VkCommandPoolCreateInfo*,
+                                              const VkAllocationCallbacks*,
+                                              VkCommandPool*));
+DR_VULKAN_SYM(void (*vkDestroyCommandPool)(VkDevice,
+                                           VkCommandPool,
+                                           const VkAllocationCallbacks*));
+DR_VULKAN_SYM(VkResult (*vkAllocateCommandBuffers)(VkDevice,
+                                                   const VkCommandBufferAllocateInfo*,
+                                                   VkCommandBuffer*));
+DR_VULKAN_SYM(void (*vkFreeCommandBuffers)(VkDevice,
+                                           VkCommandPool,
+                                           uint32_t,
+                                           const VkCommandBuffer*));
+DR_VULKAN_SYM(VkResult (*vkBeginCommandBuffer)(VkCommandBuffer,
+                                              const VkCommandBufferBeginInfo*));
+DR_VULKAN_SYM(VkResult (*vkEndCommandBuffer)(VkCommandBuffer));
+
+DR_VULKAN_SYM(void (*vkCmdCopyBuffer)(VkCommandBuffer,
+                                      VkBuffer,
+                                      VkBuffer,
+                                      uint32_t,
+                                      const VkBufferCopy*));
+DR_VULKAN_SYM(VkResult (*vkQueueSubmit)(VkQueue,
+                                        uint32_t,
+                                        const VkSubmitInfo*,
+                                        VkFence));
+DR_VULKAN_SYM(VkResult (*vkCreateFence)(VkDevice,
+                                        const VkFenceCreateInfo*,
+                                        const VkAllocationCallbacks*,
+                                        VkFence*));
+DR_VULKAN_SYM(void (*vkDestroyFence)(VkDevice,
+                                     VkFence,
+                                     const VkAllocationCallbacks*));
+DR_VULKAN_SYM(VkResult (*vkWaitForFences)(VkDevice,
+                                          uint32_t,
+                                          const VkFence*,
+                                          uint32_t,
+                                          uint64_t));
 
 #if defined(DR_VULKAN_SYM)
 #  undef DR_VULKAN_SYM
