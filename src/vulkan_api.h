@@ -25,17 +25,19 @@ extern void *jitc_vulkan_lookup(const char *name);
 #define VK_MAKE_API_VERSION(variant, major, minor, patch) \
     ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
 
-# define VK_STRUCTURE_TYPE_APPLICATION_INFO              0
-# define VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO          1
-# define VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO      2
-# define VK_STRUCTURE_TYPE_SUBMIT_INFO                   4
-# define VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO            3
-# define VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO          5
-# define VK_STRUCTURE_TYPE_FENCE_CREATE_INFO             8
-# define VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO           12
-# define VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO     39
-# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO 40
-# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO    42
+# define VK_STRUCTURE_TYPE_APPLICATION_INFO                      0
+# define VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO                  1
+# define VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO              2
+# define VK_STRUCTURE_TYPE_SUBMIT_INFO                           4
+# define VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO                    3
+# define VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO                  5
+# define VK_STRUCTURE_TYPE_FENCE_CREATE_INFO                     8
+# define VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO                 9
+# define VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO                   12
+# define VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO             39
+# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO         40
+# define VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO            42
+# define VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO        1000207005
 
 # define VK_MAX_EXTENSION_NAME_SIZE 256U
 # define VK_MAX_DESCRIPTION_SIZE    256U
@@ -58,6 +60,8 @@ extern void *jitc_vulkan_lookup(const char *name);
 # define VK_COMMAND_BUFFER_LEVEL_PRIMARY 0
 
 # define VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT 0x00000001
+
+# define VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT 0x00000800
 
 # define VK_SUCCESS 0
 
@@ -315,6 +319,12 @@ struct VkFenceCreateInfo {
     uint32_t     flags;
 };
 
+struct VkSemaphoreCreateInfo {
+    int             sType;
+    const void*     pNext;
+    uint32_t        flags;
+};
+
 #if !defined(DR_VULKAN_SYM)
 #  define DR_VULKAN_SYM(x) extern x;
 #endif
@@ -384,7 +394,6 @@ DR_VULKAN_SYM(void (*vkFreeCommandBuffers)(VkDevice,
 DR_VULKAN_SYM(VkResult (*vkBeginCommandBuffer)(VkCommandBuffer,
                                               const VkCommandBufferBeginInfo*));
 DR_VULKAN_SYM(VkResult (*vkEndCommandBuffer)(VkCommandBuffer));
-
 DR_VULKAN_SYM(void (*vkCmdCopyBuffer)(VkCommandBuffer,
                                       VkBuffer,
                                       VkBuffer,
@@ -406,6 +415,13 @@ DR_VULKAN_SYM(VkResult (*vkWaitForFences)(VkDevice,
                                           const VkFence*,
                                           uint32_t,
                                           uint64_t));
+DR_VULKAN_SYM(VkResult (*vkCreateSemaphore)(VkDevice,
+                                            const VkSemaphoreCreateInfo*,
+                                            const VkAllocationCallbacks*,
+                                            VkSemaphore*));
+DR_VULKAN_SYM(void (*vkDestroySemaphore)(VkDevice,
+                                         VkSemaphore,
+                                         const VkAllocationCallbacks*));
 
 #if defined(DR_VULKAN_SYM)
 #  undef DR_VULKAN_SYM

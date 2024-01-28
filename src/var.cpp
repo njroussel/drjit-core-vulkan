@@ -1599,23 +1599,37 @@ uint32_t jitc_var_mem_copy(JitBackend backend, AllocType atype, VarType vtype,
                 submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
                 submitInfo.commandBufferCount = 1;
                 submitInfo.pCommandBuffers = &cmds;
+
+                VkSemaphore previous_semaphore = jitc_vulkan_semaphore;
+                submitInfo.waitSemaphoreCount = 1;
+                submitInfo.pWaitSemaphores = &previous_semaphore;
+                uint32_t stages[] = { VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT };
+                submitInfo.pWaitDstStageMask = stages;
+
+                jitc_vulkan_semaphore = jitc_vulkan_create_semaphore();
+                submitInfo.signalSemaphoreCount = 1;
+                submitInfo.pSignalSemaphores = &jitc_vulkan_semaphore;
+
                 vulkan_check(vkQueueSubmit(jitc_vulkan_queue, 1, &submitInfo, fence));
 
-                using PayloadType = std::pair<VkFence, VkCommandBuffer>;
-                void *payload = new PayloadType({fence, cmds});
-
+                using PayloadType =
+                    std::tuple<VkFence, VkCommandBuffer, VkSemaphore>;
+                void *payload =
+                    new PayloadType({ fence, cmds, previous_semaphore});
                 auto wait_and_free = [](uint32_t, void *payload_) {
                     PayloadType *payload = (PayloadType *) payload_;
 
                     VkFence fence;
                     VkCommandBuffer cmds;
-                    std::tie(fence, cmds) = *payload;
+                    VkSemaphore semaphore;
+                    std::tie(fence, cmds, semaphore) = *payload;
 
                     vulkan_check(vkWaitForFences(jitc_vulkan_device, 1, &fence,
                                                  true, UINT64_MAX));
                     vkFreeCommandBuffers(jitc_vulkan_device,
                                          jitc_vulkan_cmd_pool, 1, &cmds);
                     vkDestroyFence(jitc_vulkan_device, fence, nullptr);
+                    vkDestroySemaphore(jitc_vulkan_device, semaphore, nullptr);
                 };
                 auto payload_destructor = [](void *payload_) {
                     PayloadType *payload = (PayloadType *) payload_;
