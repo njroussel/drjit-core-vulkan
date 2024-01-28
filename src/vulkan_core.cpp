@@ -9,6 +9,7 @@ VkQueue jitc_vulkan_queue = nullptr;
 uint32_t jitc_vulkan_mem_type_idx = -1;
 VkBufferMemMap jitc_vulkan_buffer_mem_map;
 VkCommandPool jitc_vulkan_cmd_pool = nullptr;
+VkSemaphore jitc_vulkan_semaphore = nullptr;
 
 /// Find validation layers
 static void jitc_add_validation_layer(std::vector<std::string> &layers) {
@@ -187,6 +188,17 @@ bool jitc_vulkan_init() {
     vulkan_check(vkCreateCommandPool(jitc_vulkan_device, &pool_info, nullptr,
                                      &jitc_vulkan_cmd_pool));
 
+    ///
+    /// Create first semaphore and signal it immediately
+    ///
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 0;
+    jitc_vulkan_semaphore = jitc_vulkan_create_semaphore();
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &jitc_vulkan_semaphore;
+    vulkan_check(vkQueueSubmit(jitc_vulkan_queue, 1, &submitInfo, nullptr));
+
     return true;
 }
 
@@ -195,6 +207,9 @@ void jitc_vulkan_shutdown(){
     jitc_log(Info, "jit_vulkan_shutdown()");
 
     #define Z(x) x = nullptr
+    vkDestroySemaphore(jitc_vulkan_device, jitc_vulkan_semaphore, nullptr);
+    Z(jitc_vulkan_semaphore);
+
     vkDestroyCommandPool(jitc_vulkan_device, jitc_vulkan_cmd_pool, nullptr);
     Z(jitc_vulkan_cmd_pool);
 
@@ -216,4 +231,15 @@ void vulkan_check_impl(VkResult errval, const char *file, const int line) {
         jitc_fail("vulkan_check(): API error %04i (%s): \"%s\" in "
                   "%s:%i.", (int) errval, name, msg, file, line);
     }
+}
+
+VkSemaphore jitc_vulkan_create_semaphore() {
+    VkSemaphoreCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkSemaphore semaphore;
+    vulkan_check(
+        vkCreateSemaphore(jitc_vulkan_device, &info, nullptr, &semaphore));
+
+    return semaphore;
 }
