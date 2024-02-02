@@ -174,7 +174,7 @@ extern JIT_EXPORT void jit_sync_device();
 extern JIT_EXPORT void jit_sync_all_devices();
 
 // ====================================================================
-//                    CUDA/LLVM-specific functionality
+//                    CUDA/Vulkan/LLVM-specific functionality
 // ====================================================================
 
 /// Return the no. of available CUDA devices that are compatible with Dr.Jit.

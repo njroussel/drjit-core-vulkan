@@ -25,7 +25,7 @@ const char *reduction_name[(int) ReduceOp::Count] = { "none", "sum", "mul",
 
 /// Helper function: enqueue parallel CPU task (synchronous or asynchronous)
 template <typename Func>
-void jitc_submit_cpu(KernelType type, Func &&func, uint32_t width,
+void jitc_submit_llvm(KernelType type, Func &&func, uint32_t width,
                      uint32_t size = 1, bool release_prev = true,
                      bool always_async = false) {
 
@@ -61,7 +61,7 @@ void jitc_submit_cpu(KernelType type, Func &&func, uint32_t width,
     jitc_task = new_task;
 }
 
-void jitc_submit_gpu(KernelType type, CUfunction kernel, uint32_t block_count,
+void jitc_submit_cuda(KernelType type, CUfunction kernel, uint32_t block_count,
                      uint32_t thread_count, uint32_t shared_mem_bytes,
                      CUstream stream, void **args, void **extra,
                      uint32_t width) {
@@ -144,7 +144,7 @@ void jitc_memset_async(JitBackend backend, void *ptr, uint32_t size_,
                     device.get_launch_config(&block_count, &thread_count, size_);
                     void *args[] = { &ptr, &size_, (void *) src };
                     CUfunction kernel = jitc_cuda_fill_64[device.id];
-                    jitc_submit_gpu(KernelType::Other, kernel, block_count,
+                    jitc_submit_cuda(KernelType::Other, kernel, block_count,
                                     thread_count, 0, ts->stream, args, nullptr,
                                     size_);
                 }
@@ -154,7 +154,7 @@ void jitc_memset_async(JitBackend backend, void *ptr, uint32_t size_,
         uint8_t src8[8] { };
         memcpy(&src8, src, isize);
 
-        jitc_submit_cpu(KernelType::Other,
+        jitc_submit_llvm(KernelType::Other,
             [ptr, src8, size, isize](uint32_t) {
                 switch (isize) {
                     case 1:
@@ -217,7 +217,7 @@ void jitc_memcpy_async(JitBackend backend, void *dst, const void *src, size_t si
         cuda_check(cuMemcpyAsync((CUdeviceptr) dst, (CUdeviceptr) src, size,
                                  ts->stream));
     } else {
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [dst, src, size](uint32_t) {
                 memcpy(dst, src, size);
@@ -341,7 +341,7 @@ void jitc_reduce(JitBackend backend, VarType type, ReduceOp rtype, const void *p
             // This is a small array, do everything in just one reduction.
             void *args[] = { &ptr, &size, &out };
 
-            jitc_submit_gpu(KernelType::Reduce, func, 1, thread_count,
+            jitc_submit_cuda(KernelType::Reduce, func, 1, thread_count,
                             shared_size, ts->stream, args, nullptr, size);
         } else {
             void *temp = jitc_malloc(backend, AllocType::Device, size_t(block_count) * tsize);
@@ -349,13 +349,13 @@ void jitc_reduce(JitBackend backend, VarType type, ReduceOp rtype, const void *p
             // First reduction
             void *args_1[] = { &ptr, &size, &temp };
 
-            jitc_submit_gpu(KernelType::Reduce, func, block_count, thread_count,
+            jitc_submit_cuda(KernelType::Reduce, func, block_count, thread_count,
                             shared_size, ts->stream, args_1, nullptr, size);
 
             // Second reduction
             void *args_2[] = { &temp, &block_count, &out };
 
-            jitc_submit_gpu(KernelType::Reduce, func, 1, thread_count,
+            jitc_submit_cuda(KernelType::Reduce, func, 1, thread_count,
                             shared_size, ts->stream, args_2, nullptr, size);
 
             jitc_free(temp);
@@ -372,7 +372,7 @@ void jitc_reduce(JitBackend backend, VarType type, ReduceOp rtype, const void *p
             target = jitc_malloc(backend, AllocType::HostAsync, blocks * tsize);
 
         Reduction reduction = jitc_reduce_create(type, rtype);
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Reduce,
             [block_size, size, tsize, ptr, reduction, target](uint32_t index) {
                 reduction(ptr, index * block_size,
@@ -562,7 +562,7 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
                 jitc_raise("jit_prefix_sum(): type %s is not supported!", type_name[(int) vt]);
 
             void *args[] = { &in, &out, &size };
-            jitc_submit_gpu(
+            jitc_submit_cuda(
                 KernelType::Other, kernel, 1,
                 thread_count, shared_size, ts->stream, args, nullptr, size);
         } else {
@@ -597,14 +597,14 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
                                      scratch_items);
 
             void *args[] = { &scratch, &scratch_items };
-            jitc_submit_gpu(KernelType::Other,
+            jitc_submit_cuda(KernelType::Other,
                             jitc_cuda_prefix_sum_large_init[device.id],
                             block_count_init, thread_count_init, 0, ts->stream,
                             args, nullptr, scratch_items);
 
             scratch += 32; // move beyond padding area
             void *args_2[] = { &in, &out, &size, &scratch };
-            jitc_submit_gpu(KernelType::Other, kernel, block_count,
+            jitc_submit_cuda(KernelType::Other, kernel, block_count,
                             thread_count, shared_size, ts->stream, args_2,
                             nullptr, scratch_items);
             scratch -= 32;
@@ -628,7 +628,7 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
         if (blocks > 1) {
             scratch = (void *) jitc_malloc(backend, AllocType::HostAsync, blocks * isize);
 
-            jitc_submit_cpu(
+            jitc_submit_llvm(
                 KernelType::Other,
                 [block_size, size, in, vt, scratch](uint32_t index) {
                     uint32_t start = index * block_size,
@@ -641,7 +641,7 @@ void jitc_prefix_sum(JitBackend backend, VarType vt, bool exclusive,
             jitc_prefix_sum(backend, vt, true, scratch, blocks, scratch);
         }
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [block_size, size, in, out, vt, scratch, exclusive](uint32_t index) {
                 uint32_t start = index * block_size,
@@ -689,7 +689,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
                                            ts->stream));
 
             void *args[] = { &in, &out, &size, &count_out };
-            jitc_submit_gpu(
+            jitc_submit_cuda(
                 KernelType::Other, jitc_cuda_compress_small[device.id], 1,
                 thread_count, shared_size, ts->stream, args, nullptr, size);
         } else {
@@ -718,7 +718,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
                                      scratch_items);
 
             void *args[] = { &scratch, &scratch_items };
-            jitc_submit_gpu(KernelType::Other,
+            jitc_submit_cuda(KernelType::Other,
                             jitc_cuda_prefix_sum_large_init[device.id],
                             block_count_init, thread_count_init, 0, ts->stream,
                             args, nullptr, scratch_items);
@@ -729,7 +729,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
 
             scratch += 32; // move beyond padding area
             void *args_2[] = { &in, &out, &scratch, &count_out };
-            jitc_submit_gpu(KernelType::Other,
+            jitc_submit_cuda(KernelType::Other,
                             jitc_cuda_compress_large[device.id], block_count,
                             thread_count, shared_size, ts->stream, args_2,
                             nullptr, scratch_items);
@@ -761,7 +761,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
             scratch = (uint32_t *) jitc_malloc(backend, AllocType::HostAsync,
                                                blocks * sizeof(uint32_t));
 
-            jitc_submit_cpu(
+            jitc_submit_llvm(
                 KernelType::Other,
                 [block_size, size, in, scratch](uint32_t index) {
                     uint32_t start = index * block_size,
@@ -780,7 +780,7 @@ uint32_t jitc_compress(JitBackend backend, const uint8_t *in, uint32_t size, uin
             jitc_prefix_sum(backend, VarType::UInt32, true, scratch, blocks, scratch);
         }
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [block_size, size, scratch, in, out, &count_out](uint32_t index) {
                 uint32_t start = index * block_size,
@@ -939,7 +939,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         void *args_1[] = { &ptr, &buckets_1, &size, &size_per_block,
                            &bucket_count };
 
-        jitc_submit_gpu(KernelType::VCallReduce, phase_1, block_count,
+        jitc_submit_cuda(KernelType::VCallReduce, phase_1, block_count,
                         thread_count, shared_size, ts->stream, args_1, nullptr,
                         size);
 
@@ -968,7 +968,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
             void *args_3[] = { &buckets_1, &bucket_count, &bucket_count_rounded,
                                &size,      &counter,      &offsets };
 
-            jitc_submit_gpu(KernelType::VCallReduce,
+            jitc_submit_cuda(KernelType::VCallReduce,
                             jitc_cuda_mkperm_phase_3[device.id], block_count_3,
                             thread_count_3, sizeof(uint32_t) * thread_count_3,
                             ts->stream, args_3, nullptr, size);
@@ -984,7 +984,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         void *args_4[] = { &ptr, &buckets_1, &perm, &size, &size_per_block,
                            &bucket_count };
 
-        jitc_submit_gpu(KernelType::VCallReduce, phase_4, block_count,
+        jitc_submit_cuda(KernelType::VCallReduce, phase_4, block_count,
                         thread_count, shared_size, ts->stream, args_4, nullptr,
                         size);
 
@@ -1025,7 +1025,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         uint32_t unique_count = 0;
 
         // Phase 1
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::VCallReduce,
             [block_size, size, buckets, bucket_count, ptr](uint32_t index) {
                 ProfilerPhase profiler(profiler_region_mkperm_phase_1);
@@ -1047,7 +1047,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         );
 
         // Local accumulation step
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::VCallReduce,
             [bucket_count, blocks, buckets, offsets, &unique_count](uint32_t) {
                 uint32_t sum = 0, unique_count_local = 0;
@@ -1079,7 +1079,7 @@ uint32_t jitc_mkperm(JitBackend backend, const uint32_t *ptr, uint32_t size,
         Task *local_task = jitc_task;
 
         // Phase 2
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::VCallReduce,
             [block_size, size, buckets, perm, ptr](uint32_t index) {
                 ProfilerPhase profiler(profiler_region_mkperm_phase_2);
@@ -1204,7 +1204,7 @@ void jitc_block_copy(JitBackend backend, enum VarType type, const void *in, void
                  block_count  = (size + thread_count - 1) / thread_count;
 
         void *args[] = { &in, &out, &size, &block_size };
-        jitc_submit_gpu(KernelType::Other, func, block_count, thread_count, 0,
+        jitc_submit_cuda(KernelType::Other, func, block_count, thread_count, 0,
                         ts->stream, args, nullptr, size);
     } else {
         uint32_t work_unit_size = size, work_units = 1;
@@ -1215,7 +1215,7 @@ void jitc_block_copy(JitBackend backend, enum VarType type, const void *in, void
 
         BlockOp op = jitc_block_copy_create(type);
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [in, out, op, work_unit_size, size, block_size](uint32_t index) {
                 uint32_t start = index * work_unit_size,
@@ -1268,7 +1268,7 @@ void jitc_block_sum(JitBackend backend, enum VarType type, const void *in, void 
 
         void *args[] = { &in, &out, &size, &block_size };
         cuda_check(cuMemsetD8Async((CUdeviceptr) out, 0, out_size, ts->stream));
-        jitc_submit_gpu(KernelType::Other, func, block_count, thread_count, 0,
+        jitc_submit_cuda(KernelType::Other, func, block_count, thread_count, 0,
                         ts->stream, args, nullptr, size);
     } else {
         uint32_t work_unit_size = size, work_units = 1;
@@ -1279,7 +1279,7 @@ void jitc_block_sum(JitBackend backend, enum VarType type, const void *in, void 
 
         BlockOp op = jitc_block_sum_create(type);
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [in, out, op, work_unit_size, size, block_size](uint32_t index) {
                 uint32_t start = index * work_unit_size,
@@ -1313,13 +1313,13 @@ void jitc_poke(JitBackend backend, void *dst, const void *src, uint32_t size) {
         const Device &device = state.devices[ts->device];
         CUfunction func = jitc_cuda_poke[(int) type][device.id];
         void *args[] = { &dst, (void *) src };
-        jitc_submit_gpu(KernelType::Other, func, 1, 1, 0,
+        jitc_submit_cuda(KernelType::Other, func, 1, 1, 0,
                         ts->stream, args, nullptr, 1);
     } else {
         uint8_t src8[8] { };
         memcpy(&src8, src, size);
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [src8, size, dst](uint32_t) {
                 memcpy(dst, &src8, size);
@@ -1349,7 +1349,7 @@ void jitc_vcall_prepare(JitBackend backend, void *dst_, VCallDataRecord *rec_, u
                  (uintptr_t) rec_, (uintptr_t) dst_, size, block_count,
                  thread_count);
 
-        jitc_submit_gpu(KernelType::Other, func, block_count, thread_count, 0,
+        jitc_submit_cuda(KernelType::Other, func, block_count, thread_count, 0,
                         ts->stream, args, nullptr, 1);
 
         jitc_free(rec_);
@@ -1365,7 +1365,7 @@ void jitc_vcall_prepare(JitBackend backend, void *dst_, VCallDataRecord *rec_, u
                  ", size=%u, work_units=%u)",
                  (uintptr_t) rec_, (uintptr_t) dst_, size, work_units);
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other,
             [dst_, rec_, size, work_unit_size](uint32_t index) {
                 uint32_t start = index * work_unit_size,
@@ -1388,7 +1388,7 @@ void jitc_vcall_prepare(JitBackend backend, void *dst_, VCallDataRecord *rec_, u
             },
             size, work_units);
 
-        jitc_submit_cpu(
+        jitc_submit_llvm(
             KernelType::Other, [rec_](uint32_t) { jit_free(rec_); }, 1, 1,
             true, true);
     }
