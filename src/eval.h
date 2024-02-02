@@ -107,6 +107,9 @@ extern void jitc_cuda_assemble(ThreadState *ts, ScheduledGroup group,
 /// Used by jitc_eval() to generate LLVM IR source code
 extern void jitc_llvm_assemble(ThreadState *ts, ScheduledGroup group);
 
+/// Used by jitc_eval() to generate SPIR-V source code
+extern void jitc_vulkan_assemble(ThreadState *ts, ScheduledGroup group);
+
 /// Used by jitc_vcall() to generate source code for vcalls
 extern XXH128_hash_t
 jitc_assemble_func(ThreadState *ts, const char *name, uint32_t inst_id,
