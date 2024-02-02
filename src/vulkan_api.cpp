@@ -90,6 +90,7 @@ bool jitc_vulkan_api_init() {
         LOAD(vkWaitForFences);
         LOAD(vkCreateSemaphore);
         LOAD(vkDestroySemaphore);
+        LOAD(vkQueueWaitIdle);
 
         #undef LOAD
     } while (false);
@@ -139,6 +140,7 @@ void jitc_vulkan_api_shutdown() {
     Z(vkWaitForFences);
     Z(vkCreateSemaphore);
     Z(vkDestroySemaphore);
+    Z(vkQueueWaitIdle);
     #undef Z
 
 #if !defined(_WIN32)
