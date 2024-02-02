@@ -44,9 +44,12 @@ bool jitc_vulkan_init() {
     // First, dynamically load Vulkan into the process
     if (!jitc_vulkan_api_init())
         return false;
+    jitc_log(Info, "jit_vulkan_init(): loaded Vulkan API");
 
-    jitc_log(Info, "jit_vulkan_init(): loaded API");
-
+    // Dynamically load SPIR-V tools into the process
+    if (!jitc_vulkan_spirv_api_init())
+        return false;
+    jitc_log(Info, "jit_vulkan_init(): loaded SPIR-V tools API");
 
     ///
     /// Create instance
@@ -226,6 +229,8 @@ void jitc_vulkan_shutdown(){
     #undef Z
 
     jitc_vulkan_api_shutdown();
+
+    jitc_vulkan_spirv_api_shutdown();
 }
 
 void vulkan_check_impl(VkResult errval, const char *file, const int line) {
