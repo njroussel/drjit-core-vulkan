@@ -422,6 +422,8 @@ DR_VULKAN_SYM(VkResult (*vkCreateSemaphore)(VkDevice,
 DR_VULKAN_SYM(void (*vkDestroySemaphore)(VkDevice,
                                          VkSemaphore,
                                          const VkAllocationCallbacks*));
+DR_VULKAN_SYM(VkResult (*vkQueueWaitIdle)(VkQueue));
+
 
 #if defined(DR_VULKAN_SYM)
 #  undef DR_VULKAN_SYM

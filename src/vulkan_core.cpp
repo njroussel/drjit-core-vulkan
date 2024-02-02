@@ -208,6 +208,9 @@ bool jitc_vulkan_init() {
 void jitc_vulkan_shutdown(){
     jitc_log(Info, "jit_vulkan_shutdown()");
 
+    // Wait for all outstanding work to finish
+    vkQueueWaitIdle(jitc_vulkan_queue);
+
     #define Z(x) x = nullptr
     vkDestroySemaphore(jitc_vulkan_device, jitc_vulkan_semaphore, nullptr);
     Z(jitc_vulkan_semaphore);
