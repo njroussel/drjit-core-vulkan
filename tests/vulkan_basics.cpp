@@ -31,3 +31,12 @@ TEST_VULKAN(04_vulkan_var_mem_copy) {
                          VarType::Float32, b.data(), b.size() * sizeof(float));
     jit_var_dec_ref(tmp);
 }
+
+TEST_VULKAN(05_vulkan_add) {
+    Float a(1, 2, 3, 4);
+    Float b(2, 3, 4, 5);
+
+    Float c = a + b;
+
+    jit_assert(strcmp(c.str(), "[3, 5, 7, 9]") == 0);
+}

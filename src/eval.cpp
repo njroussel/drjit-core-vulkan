@@ -249,18 +249,28 @@ void jitc_assemble(ThreadState *ts, ScheduledGroup group) {
              n_regs         = 0,
              width = jitc_llvm_vector_width;
 
-    if (backend == JitBackend::CUDA) {
-        uintptr_t size = 0;
-        memcpy(&size, &group.size, sizeof(uint32_t));
-        kernel_params.push_back((void *) size);
+    switch (backend) {
+        case JitBackend::CUDA: {
+            uintptr_t size = 0;
+            memcpy(&size, &group.size, sizeof(uint32_t));
+            kernel_params.push_back((void *) size);
 
-        // The first 3 variables are reserved on the CUDA backend
-        n_regs = 4;
-    } else {
-        // First 3 parameters reserved for: kernel ptr, size, ITT identifier
-        for (int i = 0; i < 3; ++i)
-            kernel_params.push_back(nullptr);
-        n_regs = 1;
+            // The first 3 variables are reserved on the CUDA backend
+            n_regs = 4;
+            break;
+        }
+        case JitBackend::LLVM: {
+            // First 3 parameters reserved for: kernel ptr, size, ITT identifier
+            for (int i = 0; i < 3; ++i)
+                kernel_params.push_back(nullptr);
+            n_regs = 1;
+            break;
+        }
+        case JitBackend::Vulkan: {
+            break;
+        }
+        default:
+            jitc_raise("jitc_assemble(): unknown JIT backend!");
     }
 
     (void) timer();
@@ -401,10 +411,19 @@ void jitc_assemble(ThreadState *ts, ScheduledGroup group) {
     }
 
     buffer.clear();
-    if (backend == JitBackend::CUDA)
-        jitc_cuda_assemble(ts, group, n_regs, kernel_param_count);
-    else
-        jitc_llvm_assemble(ts, group);
+    switch (backend) {
+        case JitBackend::CUDA:
+            jitc_cuda_assemble(ts, group, n_regs, kernel_param_count);
+            break;
+        case JitBackend::LLVM:
+            jitc_llvm_assemble(ts, group);
+            break;
+        case JitBackend::Vulkan:
+            jitc_vulkan_assemble(ts, group);
+            break;
+        default:
+            jitc_raise("jitc_assemble(): unknown JIT backend!");
+    }
 
     // Replace '^'s in '__raygen__^^^..' or 'drjit_^^^..' with hash
     kernel_hash = hash_kernel(buffer.get());

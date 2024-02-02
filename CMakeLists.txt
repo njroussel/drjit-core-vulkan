@@ -154,6 +154,7 @@ add_library(
   src/vulkan_spirv_api.h
   src/vulkan_spirv_api.cpp
   src/vulkan_core.cpp
+  src/vulkan_eval.cpp
   src/vulkan_ts.h
   src/vulkan_ts.cpp
 

@@ -116,6 +116,9 @@ extern XXH128_hash_t jitc_assemble_func(const CallData *call, uint32_t inst,
                                         uint32_t in_size, uint32_t in_align,
                                         uint32_t out_size, uint32_t out_align);
 
+/// Used by jitc_eval() to generate SPIR-V source code
+extern void jitc_vulkan_assemble(ThreadState *ts, ScheduledGroup group);
+
 /// Used by jitc_call() to generate LLVM IR source code for callables
 extern void jitc_llvm_assemble_func(const CallData *call, uint32_t inst);
 
