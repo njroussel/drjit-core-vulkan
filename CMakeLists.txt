@@ -131,7 +131,10 @@ add_library(
   # Vulkan backend
   src/vulkan_api.h
   src/vulkan_api.cpp
+  src/vulkan_spirv_api.h
+  src/vulkan_spirv_api.cpp
   src/vulkan_core.cpp
+  src/vulkan_eval.cpp
 
   src/io.h            src/io.cpp
   src/eval.h          src/eval.cpp

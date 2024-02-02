@@ -12,6 +12,7 @@
 #include "hash.h"
 #include "tsl/robin_map.h"
 #include "vulkan_api.h"
+#include "vulkan_spirv_api.h"
 
 struct VkDeviceMemoryHasher {
     size_t operator()(VkDeviceMemory ptr) const {
