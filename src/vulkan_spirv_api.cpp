@@ -61,7 +61,11 @@ bool jitc_vulkan_spirv_api_init() {
             symbol = nullptr
 
         LOAD(spvContextCreate);
+        LOAD(spvContextDestroy);
         LOAD(spvTextToBinary);
+        LOAD(spvBinaryDestroy);
+        LOAD(spvDiagnosticPrint);
+        LOAD(spvDiagnosticDestroy);
 
         #undef LOAD
     } while (false);
@@ -84,7 +88,11 @@ void jitc_vulkan_spirv_api_shutdown() {
 
     #define Z(x) x = nullptr
     Z(spvContextCreate);
+    Z(spvContextDestroy);
     Z(spvTextToBinary);
+    Z(spvBinaryDestroy);
+    Z(spvDiagnosticPrint);
+    Z(spvDiagnosticDestroy);
     #undef Z
 
 #if !defined(_WIN32)

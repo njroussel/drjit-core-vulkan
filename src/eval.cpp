@@ -375,19 +375,30 @@ Task *jitc_run(ThreadState *ts, ScheduledGroup group) {
 
         if (!cache_hit) {
             ProfilerPhase profiler(profiler_region_backend_compile);
-            if (ts->backend == JitBackend::CUDA) {
-                if (!uses_optix) {
-                    jitc_cuda_compile(buffer.get(), buffer.size(), kernel);
-                } else {
+            switch (ts->backend) {
+                case JitBackend::CUDA: {
+                    if (!uses_optix) {
+                        jitc_cuda_compile(buffer.get(), buffer.size(), kernel);
+                    } else {
 #if defined(DRJIT_ENABLE_OPTIX)
-                    cache_hit = jitc_optix_compile(
-                        ts, buffer.get(), buffer.size(), kernel_name, kernel);
+                        cache_hit = jitc_optix_compile(
+                            ts, buffer.get(), buffer.size(), kernel_name, kernel);
 #else
-                    jitc_fail("jit_run(): OptiX support was not enabled in DrJit.");
+                        jitc_fail("jit_run(): OptiX support was not enabled in DrJit.");
 #endif
+                    }
+                    break;
                 }
-            } else {
-                jitc_llvm_compile(kernel);
+                case JitBackend::LLVM: {
+                    jitc_llvm_compile(kernel);
+                    break;
+                }
+                case JitBackend::Vulkan: {
+                    jitc_vulkan_compile(kernel);
+                    break;
+                }
+                default:
+                    jitc_raise("jitc_run(): unknown JIT backend!");
             }
 
             if (kernel.data)
@@ -397,47 +408,63 @@ Task *jitc_run(ThreadState *ts, ScheduledGroup group) {
 
         ProfilerPhase profiler(profiler_region_backend_load);
 
-        if (ts->backend == JitBackend::LLVM) {
-            jitc_llvm_disasm(kernel);
-        } else if (!uses_optix) {
-            CUresult ret = (CUresult) 0;
-            /* Unlock while synchronizing */ {
-                unlock_guard guard(state.lock);
-                ret = cuModuleLoadData(&kernel.cuda.mod, kernel.data);
+        switch (ts->backend) {
+            case JitBackend::LLVM: {
+                jitc_llvm_disasm(kernel);
+                break;
             }
-            if (ret == CUDA_ERROR_OUT_OF_MEMORY) {
-                jitc_flush_malloc_cache(true);
-                /* Unlock while synchronizing */ {
-                    unlock_guard guard(state.lock);
-                    ret = cuModuleLoadData(&kernel.cuda.mod, kernel.data);
+            case JitBackend::CUDA: {
+                if (!uses_optix) {
+                    CUresult ret = (CUresult) 0;
+                    /* Unlock while synchronizing */
+                    {
+                        unlock_guard guard(state.lock);
+                        ret = cuModuleLoadData(&kernel.cuda.mod, kernel.data);
+                    }
+                    if (ret == CUDA_ERROR_OUT_OF_MEMORY) {
+                        jitc_flush_malloc_cache(true);
+                        /* Unlock while synchronizing */ {
+                            unlock_guard guard(state.lock);
+                            ret = cuModuleLoadData(&kernel.cuda.mod, kernel.data);
+                        }
+                    }
+                    cuda_check(ret);
+
+                    // Locate the kernel entry point
+                    size_t offset = buffer.size();
+                    buffer.fmt_cuda(2, "drjit_$Q$Q", kernel_hash.high64,
+                                    kernel_hash.low64);
+                    cuda_check(cuModuleGetFunction(&kernel.cuda.func,
+                                                   kernel.cuda.mod,
+                                                   buffer.get() + offset));
+                    buffer.rewind_to(offset);
+
+                    // Determine a suitable thread count to maximize occupancy
+                    int unused, block_size;
+                    cuda_check(cuOccupancyMaxPotentialBlockSize(
+                        &unused, &block_size, kernel.cuda.func, nullptr, 0, 0));
+                    kernel.cuda.block_size = (uint32_t) block_size;
+
+                    // DrJit doesn't use shared memory at all, prefer to have
+                    // more L1 cache.
+                    cuda_check(cuFuncSetAttribute(
+                        kernel.cuda.func,
+                        CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, 0));
+                    cuda_check(cuFuncSetAttribute(
+                        kernel.cuda.func,
+                        CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT,
+                        CU_SHAREDMEM_CARVEOUT_MAX_L1));
+
+                    free(kernel.data);
+                    kernel.data = nullptr;
                 }
+                break;
             }
-            cuda_check(ret);
-
-            // Locate the kernel entry point
-            size_t offset = buffer.size();
-            buffer.fmt_cuda(2, "drjit_$Q$Q", kernel_hash.high64,
-                            kernel_hash.low64);
-            cuda_check(cuModuleGetFunction(&kernel.cuda.func, kernel.cuda.mod,
-                                           buffer.get() + offset));
-            buffer.rewind_to(offset);
-
-            // Determine a suitable thread count to maximize occupancy
-            int unused, block_size;
-            cuda_check(cuOccupancyMaxPotentialBlockSize(
-                &unused, &block_size,
-                kernel.cuda.func, nullptr, 0, 0));
-            kernel.cuda.block_size = (uint32_t) block_size;
-
-            // DrJit doesn't use shared memory at all, prefer to have more L1 cache.
-            cuda_check(cuFuncSetAttribute(
-                kernel.cuda.func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, 0));
-            cuda_check(cuFuncSetAttribute(
-                kernel.cuda.func, CU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT,
-                CU_SHAREDMEM_CARVEOUT_MAX_L1));
-
-            free(kernel.data);
-            kernel.data = nullptr;
+            case JitBackend::Vulkan: {
+                break;
+            }
+            default:
+                jitc_raise("jitc_run(): unknown JIT backend!");
         }
 
         float link_time = timer();
@@ -478,87 +505,91 @@ Task *jitc_run(ThreadState *ts, ScheduledGroup group) {
     }
 
     Task* ret_task = nullptr;
-    if (ts->backend == JitBackend::CUDA) {
-#if defined(DRJIT_ENABLE_OPTIX)
-        if (unlikely(uses_optix))
-            jitc_optix_launch(ts, kernel, group.size, kernel_params_global,
-                              kernel_param_count);
+    switch (ts->backend) {
+        case JitBackend::CUDA: {
+            #if defined(DRJIT_ENABLE_OPTIX)
+            if (unlikely(uses_optix))
+                jitc_optix_launch(ts, kernel, group.size, kernel_params_global,
+                                  kernel_param_count);
+            #endif
+
+            if (!uses_optix) {
+                size_t buffer_size = kernel_params.size() * sizeof(void *);
+
+                void *config[] = { CU_LAUNCH_PARAM_BUFFER_POINTER,
+                                   kernel_params.data(),
+                                   CU_LAUNCH_PARAM_BUFFER_SIZE, &buffer_size,
+                                   CU_LAUNCH_PARAM_END };
+
+                uint32_t block_count, thread_count, size = group.size;
+                const Device &device = state.devices[ts->device];
+                device.get_launch_config(&block_count, &thread_count, size,
+                                         (uint32_t) kernel.cuda.block_size);
+
+                cuda_check(cuLaunchKernel(kernel.cuda.func, block_count, 1, 1,
+                                          thread_count, 1, 1, 0, ts->stream,
+                                          nullptr, config));
+            }
+
+            if (unlikely(jit_flag(JitFlag::LaunchBlocking)))
+                cuda_check(cuStreamSynchronize(ts->stream));
+            break;
+        }
+        case JitBackend::LLVM: {
+            uint32_t packets = (group.size + jitc_llvm_vector_width - 1) /
+                               jitc_llvm_vector_width;
+
+            auto callback = [](uint32_t index, void *ptr) {
+                void **params             = (void **) ptr;
+                LLVMKernelFunction kernel = (LLVMKernelFunction) params[0];
+                uint32_t size             = (uint32_t) (uintptr_t) params[1],
+                         block_size = (uint32_t) ((uintptr_t) params[1] >> 32),
+                         start      = index * block_size,
+                         end        = std::min(start + block_size, size);
+
+#if defined(DRJIT_ENABLE_ITTNOTIFY)
+                // Signal start of kernel
+                __itt_task_begin(drjit_domain, __itt_null, __itt_null,
+                                 (__itt_string_handle *) params[2]);
 #endif
+                // Perform the main computation
+                kernel(start, end, params);
 
-        if (!uses_optix) {
-            size_t buffer_size = kernel_params.size() * sizeof(void *);
-
-            void *config[] = {
-                CU_LAUNCH_PARAM_BUFFER_POINTER,
-                kernel_params.data(),
-                CU_LAUNCH_PARAM_BUFFER_SIZE,
-                &buffer_size,
-                CU_LAUNCH_PARAM_END
+#if defined(DRJIT_ENABLE_ITTNOTIFY)
+                // Signal termination of kernel
+                __itt_task_end(drjit_domain);
+#endif
             };
 
-            uint32_t block_count, thread_count, size = group.size;
-            const Device &device = state.devices[ts->device];
-            device.get_launch_config(&block_count, &thread_count, size,
-                                     (uint32_t) kernel.cuda.block_size);
+            uint32_t block_size = DRJIT_POOL_BLOCK_SIZE,
+                     blocks     = (group.size + block_size - 1) / block_size;
 
-            cuda_check(cuLaunchKernel(kernel.cuda.func, block_count, 1, 1,
-                                      thread_count, 1, 1, 0, ts->stream,
-                                      nullptr, config));
+            kernel_params[0] = (void *) kernel.llvm.reloc[0];
+            kernel_params[1] = (void *) ((((uintptr_t) block_size) << 32) +
+                                         (uintptr_t) group.size);
+
+#if defined(DRJIT_ENABLE_ITTNOTIFY)
+            kernel_params[2] = kernel.llvm.itt;
+#endif
+
+            jitc_trace("jit_run(): scheduling %u packet%s in %u block%s ..",
+                       packets, packets == 1 ? "" : "s", blocks,
+                       blocks == 1 ? "" : "s");
+            (void) packets; // jitc_trace may be disabled
+
+            ret_task = task_submit_dep(
+                nullptr, &jitc_task, 1, blocks, callback, kernel_params.data(),
+                (uint32_t) (kernel_params.size() * sizeof(void *)), nullptr);
+
+            if (unlikely(jit_flag(JitFlag::LaunchBlocking)))
+                task_wait(ret_task);
+            break;
         }
-
-        if (unlikely(jit_flag(JitFlag::LaunchBlocking)))
-            cuda_check(cuStreamSynchronize(ts->stream));
-    } else {
-        uint32_t packets =
-            (group.size + jitc_llvm_vector_width - 1) / jitc_llvm_vector_width;
-
-        auto callback = [](uint32_t index, void *ptr) {
-            void **params = (void **) ptr;
-            LLVMKernelFunction kernel = (LLVMKernelFunction) params[0];
-            uint32_t size       = (uint32_t) (uintptr_t) params[1],
-                     block_size = (uint32_t) ((uintptr_t) params[1] >> 32),
-                     start      = index * block_size,
-                     end        = std::min(start + block_size, size);
-
-#if defined(DRJIT_ENABLE_ITTNOTIFY)
-            // Signal start of kernel
-            __itt_task_begin(drjit_domain, __itt_null, __itt_null,
-                             (__itt_string_handle *) params[2]);
-#endif
-            // Perform the main computation
-            kernel(start, end, params);
-
-#if defined(DRJIT_ENABLE_ITTNOTIFY)
-            // Signal termination of kernel
-            __itt_task_end(drjit_domain);
-#endif
-        };
-
-        uint32_t block_size = DRJIT_POOL_BLOCK_SIZE,
-                 blocks = (group.size + block_size - 1) / block_size;
-
-        kernel_params[0] = (void *) kernel.llvm.reloc[0];
-        kernel_params[1] = (void *) ((((uintptr_t) block_size) << 32) +
-                                     (uintptr_t) group.size);
-
-#if defined(DRJIT_ENABLE_ITTNOTIFY)
-        kernel_params[2] = kernel.llvm.itt;
-#endif
-
-        jitc_trace("jit_run(): scheduling %u packet%s in %u block%s ..",
-                   packets, packets == 1 ? "" : "s", blocks,
-                   blocks == 1 ? "" : "s");
-        (void) packets; // jitc_trace may be disabled
-
-        ret_task = task_submit_dep(
-            nullptr, &jitc_task, 1, blocks,
-            callback, kernel_params.data(),
-            (uint32_t) (kernel_params.size() * sizeof(void *)),
-            nullptr
-        );
-
-        if (unlikely(jit_flag(JitFlag::LaunchBlocking)))
-            task_wait(ret_task);
+        case JitBackend::Vulkan: {
+            break;
+        }
+        default:
+            jitc_raise("jitc_assemble(): unknown JIT backend!");
     }
 
     if (unlikely(jit_flag(JitFlag::KernelHistory))) {
@@ -569,6 +600,7 @@ Task *jitc_run(ThreadState *ts, ScheduledGroup group) {
             task_retain(ret_task);
             kernel_history_entry.task = ret_task;
         }
+        //FIXME: Support KernelHistory on Vulkan
 
         state.kernel_history.append(kernel_history_entry);
     }

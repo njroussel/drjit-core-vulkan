@@ -4,7 +4,7 @@
 #include "eval.h"
 #include <cstdarg>
 
-/// Global string buffer used to generate PTX/LLVM IR
+/// Global string buffer used to generate PTX/LLVM/SPIR-V IR
 StringBuffer buffer { 1024 };
 
 static const char num[] = "0123456789abcdef";

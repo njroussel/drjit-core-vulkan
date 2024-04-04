@@ -14,6 +14,9 @@
 #include "vulkan_api.h"
 #include "vulkan_spirv_api.h"
 
+// Forward declarations
+struct Kernel;
+
 struct VkDeviceMemoryHasher {
     size_t operator()(VkDeviceMemory ptr) const {
         return (size_t) hasher((uint64_t) ptr);
@@ -31,6 +34,7 @@ extern uint32_t jitc_vulkan_mem_type_idx;
 extern VkBufferMemMap jitc_vulkan_buffer_mem_map;
 extern VkCommandPool jitc_vulkan_cmd_pool;
 extern VkSemaphore jitc_vulkan_semaphore;
+extern spv_diagnostic jitc_vulkan_spv_diagnostic;
 
 /// Try to load Vulkan
 extern bool jitc_vulkan_init();
@@ -44,3 +48,10 @@ extern void vulkan_check_impl(VkResult errval, const char *file, const int line)
 
 /// Create a semaphore
 extern VkSemaphore jitc_vulkan_create_semaphore();
+
+/// Compile
+extern void jitc_vulkan_compile(Kernel &kernel);
+
+/// Assert that a SPIR-V tools operation is correctly issued
+#define spv_check(err) spv_check_impl(err, __FILE__, __LINE__)
+extern void spv_check_impl(spv_result_t errval, const char *file, const int line);

@@ -1,6 +1,7 @@
+#include "eval.h"
+#include "log.h"
 #include "hash.h"
 #include "tsl/robin_map.h"
-#include "log.h"
 #include "vulkan.h"
 
 VkInstance jitc_vulkan_instance = nullptr;
@@ -10,6 +11,7 @@ uint32_t jitc_vulkan_mem_type_idx = -1;
 VkBufferMemMap jitc_vulkan_buffer_mem_map;
 VkCommandPool jitc_vulkan_cmd_pool = nullptr;
 VkSemaphore jitc_vulkan_semaphore = nullptr;
+spv_diagnostic jitc_vulkan_spv_diagnostic;
 
 /// Find validation layers
 static void jitc_add_validation_layer(std::vector<std::string> &layers) {
@@ -233,11 +235,19 @@ void jitc_vulkan_shutdown(){
 
 void vulkan_check_impl(VkResult errval, const char *file, const int line) {
     if (unlikely(errval != VK_SUCCESS)) {
-        const char *name = nullptr, *msg = nullptr;
-        //cuGetErrorName(errval, &name);
-        //cuGetErrorString(errval, &msg);
-        jitc_fail("vulkan_check(): API error %04i (%s): \"%s\" in "
-                  "%s:%i.", (int) errval, name, msg, file, line);
+        // FIXME: Get actual error code 
+        jitc_fail("vulkan_check(): API error %04i in: %s:%i.", (int) errval,
+                  file, line);
+    }
+}
+
+void spv_check_impl(spv_result_t errval, const char *file, const int line) {
+    if (unlikely(errval != SPV_SUCCESS)) {
+        // FIXME: Cleanup
+        spv_check(spvDiagnosticPrint(jitc_vulkan_spv_diagnostic));
+        spvDiagnosticDestroy(jitc_vulkan_spv_diagnostic);
+        jitc_fail("spv_check(): API error %04i: in %s:%i.", (int) errval, file,
+                  line);
     }
 }
 
@@ -250,4 +260,18 @@ VkSemaphore jitc_vulkan_create_semaphore() {
         vkCreateSemaphore(jitc_vulkan_device, &info, nullptr, &semaphore));
 
     return semaphore;
+}
+
+void jitc_vulkan_compile(Kernel &kernel) {
+    (void) kernel;
+
+    spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_1);
+    spv_binary binary = nullptr;
+    spv_check(spvTextToBinary(context, buffer.get(), buffer.size(), &binary,
+                              &jitc_vulkan_spv_diagnostic));
+    spvContextDestroy(context);
+    //FIXME: Don't particularly need to put in in the StringBuffer
+    buffer.clear();
+    buffer.put((char *) binary->code, binary->wordCount * 4);
+    spvBinaryDestroy(binary);
 }

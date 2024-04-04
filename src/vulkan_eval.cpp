@@ -96,14 +96,15 @@ void jitc_vulkan_assemble(ThreadState *ts, ScheduledGroup group) {
     (void) ts;
     (void) group;
 
-    bool print_labels = std::max(state.log_level_stderr,
-                                 state.log_level_callback) >= LogLevel::Trace ||
-                        (jitc_flags() & (uint32_t) JitFlag::PrintIR);
+    //bool print_labels = std::max(state.log_level_stderr,
+    //                             state.log_level_callback) >= LogLevel::Trace ||
+    //                    (jitc_flags() & (uint32_t) JitFlag::PrintIR);
 
-    put("OpCapability  Kernel\n"
+    put("OpCapability Shader\n"
         "OpMemoryModel Logical Vulkan\n"
-        "OpEntryPoint Kernel %4 \"main\" %params"
-        "OpEntryPoint Kernel %4 \"main\" %params"
+        "OpEntryPoint GLCompute %1 \"drjit_^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\" %params\n"
+        "\n"
+        "; type declarations\n"
     );
 }
 
